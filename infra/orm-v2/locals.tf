@@ -1,19 +1,33 @@
 locals {
-  prefix             = "jetuse-${random_string.stack_suffix.result}"
+  # random_string resourceはApplyまで値が未確定で、バケットのfor_eachを初回Planで
+  # 決定できない。入力済みのcompartment OCIDから安定した6文字を算出し、一回のApplyで作れるようにする。
+  prefix             = "jetuse-${substr(sha256("${var.compartment_ocid}:${local.deploy_region}"), 0, 6)}"
   admin_username     = "${local.prefix}-admin"
   adb_admin_password = random_password.adb_admin.result
   db_name            = substr(replace(local.prefix, "-", ""), 0, 14)
 
-  # Functionsは同一リージョンのOCIRイメージを要求する。v2は大阪固定なので、
-  # 公開namespaceのkixレジストリをリージョン購読情報から組み立てる。
-  # `inspect tenancies in tenancy` が無いと region_subscriptions は null になる(実測 PUBLIC-IAM-02)。
-  # 下の try がそれを "" に丸めてしまうので、読めたかどうかは別に持って region_guard で案内する。
-  region_subscriptions_readable = try(length(data.oci_identity_region_subscriptions.this.region_subscriptions) > 0, false)
+  deployment_regions = {
+    "大阪（ap-osaka-1・推奨）" = {
+      name = "ap-osaka-1"
+      key  = "kix"
+    }
+    "シカゴ（us-chicago-1）" = {
+      name = "us-chicago-1"
+      key  = "ord"
+    }
+  }
+  deploy_region     = local.deployment_regions[var.deployment_region].name
+  deploy_region_key = local.deployment_regions[var.deployment_region].key
 
-  deploy_region_key = try(lower(one([
-    for r in data.oci_identity_region_subscriptions.this.region_subscriptions : r.region_key
-    if r.region_name == var.region
-  ])), "")
+  # Functionsは同一リージョンのOCIRイメージを要求する。v2で選べる大阪／シカゴは
+  # どちらも公開イメージの配置先なので、選択値からレジストリを決定する。
+  # `inspect tenancies in tenancy` が無いと region_subscriptions は null になる(実測 PUBLIC-IAM-02)。
+  # 下のtryがfalseへ丸めるため、読めたかどうかは別に持ってpreflightで案内する。
+  region_subscriptions_readable = try(length(data.oci_identity_region_subscriptions.this.region_subscriptions) > 0, false)
+  deploy_region_subscribed = try(contains(
+    [for r in data.oci_identity_region_subscriptions.this.region_subscriptions : r.region_name],
+    local.deploy_region,
+  ), false)
 
   # テナンシのホームリージョン(Identity Domain 作成先)。providers.tf の home alias と同式。
   home_region = try([for r in data.oci_identity_region_subscriptions.this.region_subscriptions :
@@ -29,8 +43,8 @@ locals {
   )
   oidc_client_id = module.identity_domain_app[0].client_id
 
-  # v2は認証あり・大阪固定なので、ホスト型エージェントも常に配備する。
-  hosted_agents_enabled = var.region == "ap-osaka-1"
+  # v2で選べる大阪／シカゴは、どちらもホスト型エージェントの検証・画像配置済みリージョン。
+  hosted_agents_enabled = true
   agent_app_ocids       = local.hosted_agents_enabled ? module.hosted_agent[0].app_ocids : {}
   agent_image_registry  = local.ocir_registry
 
@@ -39,7 +53,7 @@ locals {
   # api_environment -> module.hosted_agent -> api_environment の循環参照になるため、
   # 共有分だけをここに切り出して両者が参照する。
   shared_runtime_environment = {
-    OCI_REGION         = var.region
+    OCI_REGION         = local.deploy_region
     COMPARTMENT_OCID   = var.compartment_ocid
     PROJECT_OCID       = oci_generative_ai_project.this.id
     AUTH_MODE          = "resource_principal"

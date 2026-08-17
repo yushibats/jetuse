@@ -101,6 +101,7 @@ jobs:
         run: |
           terraform init -backend=false -input=false
           terraform validate
+          terraform test
       - name: test public IAM policy contract
         working-directory: infra/terraform/modules/iam
         run: |
@@ -133,6 +134,7 @@ jobs:
           grep -q '^  enable_runtime_policy:' "$RUNNER_TEMP/orm-app/schema.yaml"
           test -f "$RUNNER_TEMP/orm-v2-app/schema.yaml"
           test -f "$RUNNER_TEMP/orm-v2-app/main.tf"
+          grep -q '^  deployment_region:' "$RUNNER_TEMP/orm-v2-app/schema.yaml"
           grep -q '^  identity_domain_mode:' "$RUNNER_TEMP/orm-v2-app/schema.yaml"
           grep -q '^  existing_identity_domain_ocid:' "$RUNNER_TEMP/orm-v2-app/schema.yaml"
           terraform -chdir="$RUNNER_TEMP/orm-app" init -backend=false -input=false

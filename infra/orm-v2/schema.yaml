@@ -3,8 +3,11 @@ description: >-
   このテンプレートは、JetUseの実行に必要なネットワーク、Autonomous Database 26ai、
   Generative AI Project、IAM、アプリケーションを新規に一括作成します。
   既存のVCN、データベース、Dynamic Group、Policyを指定する必要はありません。
-  大阪(ap-osaka-1)リージョンで実行してください。Plan時に権限、リージョン、
-  Identity Domainの状態を確認し、事前確認に合格した後でのみリソース作成へ進みます。
+  標準版はDynamic GroupとPolicyも新規作成するため、実行ユーザーにはテナンシIAMを
+  管理できる権限が必要です。
+  デプロイ先は大阪またはシカゴから選択できます。選択したリージョンが未購読の場合は、
+  OCIのリージョン管理からサブスクライブする案内をPlanに表示します。Plan時に権限、
+  リージョン購読、Identity Domainの状態を確認し、合格後にリソース作成へ進みます。
 schemaVersion: 1.1.0
 version: "20260817"
 
@@ -14,6 +17,7 @@ locale: "en"
 variableGroups:
   - title: "デプロイ先"
     variables:
+      - deployment_region
       - compartment_ocid
       - admin_email
   - title: "サインイン設定"
@@ -28,6 +32,19 @@ variableGroups:
       - image_tag
 
 variables:
+  deployment_region:
+    type: enum
+    title: "デプロイするリージョン"
+    description: >-
+      大阪またはシカゴを選択してください。大阪を推奨します。
+      選択したリージョンをまだ利用していないテナンシでは、Apply前にOCIコンソールの
+      「リージョン管理」からサブスクライブする必要があります。
+    enum:
+      - 大阪（ap-osaka-1・推奨）
+      - シカゴ（us-chicago-1）
+    default: 大阪（ap-osaka-1・推奨）
+    required: true
+
   compartment_ocid:
     type: oci:identity:compartment:id
     title: "コンパートメント"

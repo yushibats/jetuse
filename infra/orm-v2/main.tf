@@ -1,11 +1,5 @@
 # JetUse ORM v2: 初めて OCI を使う人向けの固定構成スタック。
 # 既存リソースの再利用は Identity Domain だけに限定し、それ以外はこのスタックで新規作成する。
-resource "random_string" "stack_suffix" {
-  length  = 6
-  upper   = false
-  special = false
-  numeric = true
-}
 
 data "oci_identity_domain" "existing" {
   count = (
@@ -24,6 +18,7 @@ data "oci_identity_domains_setting" "existing" {
     && trimspace(var.existing_identity_domain_ocid) != ""
   ) ? 1 : 0
 
+  provider      = oci.home
   idcs_endpoint = try(data.oci_identity_domain.existing[0].url, "")
   setting_id    = "Settings"
 }
@@ -32,7 +27,7 @@ data "oci_identity_domains_setting" "existing" {
 # APIだけでは完全判定できない項目を「確認済み」チェックボックスで利用者へ転嫁しない。
 resource "terraform_data" "preflight" {
   input = {
-    deployment_region = var.region == "ap-osaka-1" ? "新規作成可能: 大阪リージョン" : "停止: 大阪リージョンを選択してください"
+    deployment_region = local.deploy_region_subscribed ? "新規作成可能: ${var.deployment_region}" : "停止: ${var.deployment_region}は未購読です"
     iam               = "新規作成: JetUse専用Dynamic GroupとPolicy"
     identity_domain = var.identity_domain_mode == "新しく作成（推奨）" ? (
       "新規作成: JetUse専用Identity Domain"
@@ -48,8 +43,8 @@ resource "terraform_data" "preflight" {
     }
 
     precondition {
-      condition     = !local.region_subscriptions_readable || var.region == "ap-osaka-1"
-      error_message = "【対応リージョン外】初心者向けJetUse ORM v2は大阪(ap-osaka-1)専用です。OCIコンソール右上で大阪リージョンを選び、スタックを作り直してください。"
+      condition     = !local.region_subscriptions_readable || local.deploy_region_subscribed
+      error_message = "【リージョンが未購読】選択した${var.deployment_region}をこのテナンシで利用できません。OCIコンソールの「リージョン管理」から${local.deploy_region}をサブスクライブし、購読完了後にPlanを再実行してください。"
     }
 
     precondition {
@@ -143,6 +138,8 @@ module "iam" {
   include_hosted_agent_principals = local.hosted_agents_enabled
 
   existing_dynamic_group = ""
+
+  depends_on = [terraform_data.preflight]
 }
 
 module "network" {
@@ -151,13 +148,17 @@ module "network" {
   prefix              = local.prefix
   public_subnet_cidr  = "10.1.0.0/24"
   private_subnet_cidr = "10.1.1.0/24"
+
+  depends_on = [terraform_data.preflight]
 }
 
 module "object_storage" {
   source           = "../terraform/modules/object-storage"
   compartment_ocid = var.compartment_ocid
   prefix           = local.prefix
-  region           = var.region
+  region           = local.deploy_region
+
+  depends_on = [terraform_data.preflight]
 }
 
 module "adb" {
@@ -247,7 +248,7 @@ module "api_gateway" {
   source             = "../terraform/modules/api-gateway"
   compartment_ocid   = var.compartment_ocid
   prefix             = local.prefix
-  region             = var.region
+  region             = local.deploy_region
   subnet_id          = module.network.public_subnet_id
   nsg_id             = module.network.apigw_nsg_id
   ci_base_url        = "http://${module.container_instance.private_ip}:8000"
@@ -262,10 +263,12 @@ module "identity_domain" {
   providers        = { oci = oci.home }
   compartment_ocid = var.compartment_ocid
   prefix           = local.prefix
-  region           = var.region
+  region           = local.deploy_region
   # Identity Domain はテナンシのホームリージョンにしか作れない。deployリージョンではなく
   # ホームリージョンを渡す(deployリージョン≠ホームでの作成失敗を防ぐ)。
   home_region = local.home_region
+
+  depends_on = [terraform_data.preflight]
 }
 
 # IAM は作成 API が成功しても、Dynamic Group と policy の反映に実測5〜10分かかる(docs/tips.md)。
@@ -299,7 +302,7 @@ module "hosted_agent" {
   source            = "../terraform/modules/hosted-agent"
   compartment_ocid  = var.compartment_ocid
   prefix            = local.prefix
-  region            = var.region
+  region            = local.deploy_region
   idcs_endpoint     = local.domain_url
   image_registry    = local.agent_image_registry
   image_repo_prefix = "jetuse"

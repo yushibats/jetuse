@@ -2,7 +2,7 @@
 
 ## 目的
 
-利用者がコンパートメント、管理者メール、Identity Domainの準備方法だけを選び、
+利用者が大阪／シカゴ、コンパートメント、管理者メール、Identity Domainの準備方法だけを選び、
 日本語のPlan診断を確認してApplyすると、SQL Searchを含むJetUseを利用できる状態を
 完成条件とする。現行 `infra/orm` の互換性は維持し、v2は独立したZIPで配布する。
 
@@ -20,11 +20,11 @@
 ### Phase 1 — 入力削減と固定構成（実装済み）
 
 - `infra/orm-v2` を現行版から分離
-- 入力を通常3項目、既存Domain利用時4項目へ削減
+- 入力を通常4項目、既存Domain利用時5項目へ削減
 - 「新しく作成（推奨）」／「既存のIdentity Domainを使用」の単一選択
-- `jetuse-<ランダム6文字>` の名前生成
-- 大阪固定、IAM新規作成、認証あり、OpenSearchなし、固定サイズ
-- リージョン購読・大阪・既存Domain ACTIVEの日本語preflight
+- コンパートメントとリージョンからPlan時に確定する `jetuse-<自動生成6文字>` の名前生成
+- 大阪／シカゴ選択、IAM新規作成、認証あり、OpenSearchなし、固定サイズ
+- リージョン購読一覧の取得、選択リージョンの購読、既存Domain ACTIVEの日本語preflight
 - Generative AI Projectを `oci_generative_ai_project` で管理
 - OCI Providerを `8.26.0` に固定
 
@@ -84,7 +84,7 @@ Dynamic Group／Policyだけを自動再利用の対象にする。
 
 ## 完成判定
 
-- Resource Manager入力画面が意図した3〜4項目だけである
+- Resource Manager入力画面が意図した4〜5項目だけである
 - Planのエラーが日本語で原因と次の操作を示す
 - 新規Domain／既存Domainの両方でログインできる
 - Generative AI ProjectとSemantic StoreのOCIDがアプリへ直接渡る

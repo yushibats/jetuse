@@ -7,10 +7,24 @@ variable "region" {
   type = string
 }
 
-# 初心者向け入力は以下の3項目 + 既存Domain選択時だけ表示する1項目に限定する。
+# 初心者向け入力は以下の4項目 + 既存Domain選択時だけ表示する1項目に限定する。
 variable "compartment_ocid" {
   description = "JetUseの全リソースを新規作成するコンパートメント"
   type        = string
+}
+
+variable "deployment_region" {
+  description = "JetUseを構築するリージョン"
+  type        = string
+  default     = "大阪（ap-osaka-1・推奨）"
+
+  validation {
+    condition = contains([
+      "大阪（ap-osaka-1・推奨）",
+      "シカゴ（us-chicago-1）",
+    ], var.deployment_region)
+    error_message = "デプロイ先は大阪またはシカゴを選択してください。"
+  }
 }
 
 variable "admin_email" {

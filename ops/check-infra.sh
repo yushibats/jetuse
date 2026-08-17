@@ -87,7 +87,7 @@ TF_VER=$(terraform version -json 2>/dev/null | sed -n 's/.*"terraform_version": 
 [ -n "$TF_VER" ] || TF_VER=$(terraform version | head -1 | sed 's/[^0-9.]*//')
 TF_MAJOR=${TF_VER%%.*}; TF_REST=${TF_VER#*.}; TF_MINOR=${TF_REST%%.*}
 if [ "${TF_MAJOR:-0}" -gt 1 ] || { [ "${TF_MAJOR:-0}" -eq 1 ] && [ "${TF_MINOR:-0}" -ge 7 ]; }; then
-  for d in infra/terraform/modules/iam infra/terraform/modules/hosted-agent infra/terraform/modules/identity-domain-app; do
+  for d in infra/orm-v2 infra/terraform/modules/iam infra/terraform/modules/hosted-agent infra/terraform/modules/identity-domain-app; do
     echo "[infra] terraform test: $d"
     ( cd "$d" && terraform init -backend=false -input=false -lockfile=readonly >/dev/null && terraform test )
   done
@@ -134,7 +134,7 @@ terraform -chdir="$TMPD/orm-app" validate >/dev/null
 for f in schema.yaml main.tf; do
   [ -f "$TMPD/orm-v2-app/$f" ] || { echo "[infra] v2梱包に $f が無い" >&2; exit 1; }
 done
-for k in identity_domain_mode existing_identity_domain_ocid; do
+for k in deployment_region identity_domain_mode existing_identity_domain_ocid; do
   grep -q "^  $k:" "$TMPD/orm-v2-app/schema.yaml" || {
     echo "[infra] v2 schema.yaml に $k が無い" >&2; exit 1; }
 done
