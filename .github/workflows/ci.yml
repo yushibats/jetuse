@@ -96,6 +96,11 @@ jobs:
         run: |
           terraform init -backend=false -input=false
           terraform validate
+      - name: validate orm v2 (初心者向けスタック)
+        working-directory: infra/orm-v2
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
       - name: test public IAM policy contract
         working-directory: infra/terraform/modules/iam
         run: |
@@ -103,6 +108,11 @@ jobs:
           terraform test
       - name: test hosted agent module contract
         working-directory: infra/terraform/modules/hosted-agent
+        run: |
+          terraform init -backend=false -input=false
+          terraform test
+      - name: test Identity Domain reuse contract
+        working-directory: infra/terraform/modules/identity-domain-app
         run: |
           terraform init -backend=false -input=false
           terraform test
@@ -114,10 +124,38 @@ jobs:
       - name: Validate packaged JetUse stack
         run: |
           mkdir -p "$RUNNER_TEMP/orm-app"
+          mkdir -p "$RUNNER_TEMP/orm-v2-app"
           unzip -q "$RUNNER_TEMP/orm-packages/jetuse-orm.zip" -d "$RUNNER_TEMP/orm-app"
+          unzip -q "$RUNNER_TEMP/orm-packages/jetuse-orm-v2.zip" -d "$RUNNER_TEMP/orm-v2-app"
           test -f "$RUNNER_TEMP/orm-app/schema.yaml"
           test -f "$RUNNER_TEMP/orm-app/main.tf"
           grep -q '^  enable_dynamic_group:' "$RUNNER_TEMP/orm-app/schema.yaml"
           grep -q '^  enable_runtime_policy:' "$RUNNER_TEMP/orm-app/schema.yaml"
+          test -f "$RUNNER_TEMP/orm-v2-app/schema.yaml"
+          test -f "$RUNNER_TEMP/orm-v2-app/main.tf"
+          grep -q '^  identity_domain_mode:' "$RUNNER_TEMP/orm-v2-app/schema.yaml"
+          grep -q '^  existing_identity_domain_ocid:' "$RUNNER_TEMP/orm-v2-app/schema.yaml"
           terraform -chdir="$RUNNER_TEMP/orm-app" init -backend=false -input=false
           terraform -chdir="$RUNNER_TEMP/orm-app" validate
+          terraform -chdir="$RUNNER_TEMP/orm-v2-app" init -backend=false -input=false
+          terraform -chdir="$RUNNER_TEMP/orm-v2-app" validate
+
+  orm-v2-terraform-1-5:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.7
+      - name: Validate ORM v2 with Resource Manager Terraform version
+        working-directory: infra/orm-v2
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+      - name: Validate packaged ORM v2 with Resource Manager Terraform version
+        run: |
+          bash scripts/package-orm-stacks.sh "$RUNNER_TEMP/orm-packages"
+          mkdir -p "$RUNNER_TEMP/orm-v2-app"
+          unzip -q "$RUNNER_TEMP/orm-packages/jetuse-orm-v2.zip" -d "$RUNNER_TEMP/orm-v2-app"
+          terraform -chdir="$RUNNER_TEMP/orm-v2-app" init -backend=false -input=false
+          terraform -chdir="$RUNNER_TEMP/orm-v2-app" validate

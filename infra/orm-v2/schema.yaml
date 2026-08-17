@@ -1,0 +1,113 @@
+title: "JetUse on OCI — かんたんデプロイ v2"
+description: >-
+  このテンプレートは、JetUseの実行に必要なネットワーク、Autonomous Database 26ai、
+  Generative AI Project、IAM、アプリケーションを新規に一括作成します。
+  既存のVCN、データベース、Dynamic Group、Policyを指定する必要はありません。
+  大阪(ap-osaka-1)リージョンで実行してください。Plan時に権限、リージョン、
+  Identity Domainの状態を確認し、事前確認に合格した後でのみリソース作成へ進みます。
+schemaVersion: 1.1.0
+version: "20260817"
+
+logoUrl: ""
+locale: "en"
+
+variableGroups:
+  - title: "デプロイ先"
+    variables:
+      - compartment_ocid
+      - admin_email
+  - title: "サインイン設定"
+    variables:
+      - identity_domain_mode
+      - existing_identity_domain_ocid
+  - title: "Resource Managerが設定する内部値"
+    visible: false
+    variables:
+      - tenancy_ocid
+      - region
+      - image_tag
+
+variables:
+  compartment_ocid:
+    type: oci:identity:compartment:id
+    title: "コンパートメント"
+    description: "JetUse専用リソースを新規作成するコンパートメントを選択してください。"
+    required: true
+
+  admin_email:
+    type: string
+    title: "初期管理者のメールアドレス"
+    description: "作成するJetUse初期管理ユーザーのメールアドレスです。"
+    required: true
+
+  identity_domain_mode:
+    type: enum
+    title: "Identity Domainの準備方法"
+    description: >-
+      「新しく作成（推奨）」はJetUse専用の無料Identity Domain、ログインアプリ、
+      初期管理ユーザーを作成します。Identity Domainを作成できる管理者権限が必要です。
+      「既存のIdentity Domainを使用」は選択したDomain内にJetUse専用ログインアプリと
+      初期管理ユーザーを作成し、Domain自体は変更・削除しません。
+    enum:
+      - 新しく作成（推奨）
+      - 既存のIdentity Domainを使用
+    default: 新しく作成（推奨）
+    required: true
+
+  existing_identity_domain_ocid:
+    type: oci:identity:domains:id
+    title: "使用するIdentity Domain"
+    description: "ACTIVEな既存Identity Domainを選択してください。Domain自体はTerraformの管理対象にしません。"
+    required: true
+    dependsOn:
+      compartmentId: ${tenancy_ocid}
+    visible:
+      eq:
+        - ${identity_domain_mode}
+        - 既存のIdentity Domainを使用
+
+  tenancy_ocid:
+    type: oci:identity:tenancy:id
+    title: "Tenancy"
+    visible: false
+
+  region:
+    type: oci:identity:region:name
+    title: "Region"
+    visible: false
+
+  image_tag:
+    type: string
+    title: "Container image tag"
+    default: "latest"
+    visible: false
+
+outputs:
+  app_url:
+    type: link
+    title: "JetUse URL"
+  demo_username:
+    type: string
+    title: "初期管理ユーザー"
+  demo_password:
+    type: string
+    title: "初期パスワード"
+  identity_domain_url:
+    type: link
+    title: "Identity Domain URL"
+  project_ocid:
+    type: string
+    title: "Generative AI Project OCID"
+  preflight_result:
+    type: string
+    title: "事前確認結果"
+
+outputGroups:
+  - title: "デプロイ結果"
+    outputs:
+      - app_url
+      - demo_username
+      - demo_password
+      - identity_domain_url
+      - project_ocid
+      - preflight_result

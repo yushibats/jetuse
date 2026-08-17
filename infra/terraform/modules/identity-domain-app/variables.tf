@@ -18,6 +18,12 @@ variable "demo_email" {
   default     = "demo@example.com"
 }
 
+variable "demo_username" {
+  description = "作成するログインユーザー名。既定値は現行ORMとの互換用"
+  type        = string
+  default     = "demo"
+}
+
 variable "demo_password" {
   description = "デモユーザーの初期パスワード(自動生成)"
   type        = string
@@ -29,4 +35,10 @@ variable "home_region" {
   description = "テナンシのホームリージョン(Identity Domain の所在。空ならCLI既定に委ねる)"
   type        = string
   default     = ""
+}
+
+variable "manage_domain_settings" {
+  description = "Manage the domain-wide signing certificate setting. Disable when attaching JetUse to a pre-existing domain."
+  type        = bool
+  default     = true
 }

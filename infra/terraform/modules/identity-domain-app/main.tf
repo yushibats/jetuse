@@ -12,11 +12,18 @@ terraform {
 # 署名証明書(JWKS)をAPI側が匿名取得できるよう公開する。
 # 既定はfalseで /admin/v1/SigningCert/jwk が401になり、APIのJWT検証が失敗するため必須(INFRA-03実機確定)。
 resource "oci_identity_domains_setting" "this" {
+  count                      = var.manage_domain_settings ? 1 : 0
   idcs_endpoint              = var.idcs_endpoint
   setting_id                 = "Settings"
   schemas                    = ["urn:ietf:params:scim:schemas:oracle:idcs:Settings"]
   signing_cert_public_access = true
   csr_access                 = "none"
+}
+
+# count追加前の既存stackを同じresourceへ移す。既定値trueの現行ORMに差分を出さない。
+moved {
+  from = oci_identity_domains_setting.this
+  to   = oci_identity_domains_setting.this[0]
 }
 
 # SPA用 OIDC パブリッククライアント(Authorization Code + PKCE)
@@ -66,7 +73,7 @@ resource "oci_identity_domains_app" "spa" {
 resource "oci_identity_domains_user" "demo" {
   idcs_endpoint = var.idcs_endpoint
   schemas       = ["urn:ietf:params:scim:schemas:core:2.0:User"]
-  user_name     = "demo"
+  user_name     = var.demo_username
 
   name {
     family_name = "User"

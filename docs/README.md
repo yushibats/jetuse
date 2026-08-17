@@ -30,6 +30,7 @@ OCI版 JetUse プロトタイプのドキュメント案内。**まずここか�
 | 資料 | 内容 |
 |---|---|
 | [plan.md](./plan.md) | 全体計画・タスクチケット書式（§16） |
+| [plan-orm-v2.md](./plan-orm-v2.md) | 初心者向けResource Manager v2の入力削減・事前診断・SQL Search移行計画 |
 | [archive/plans/plan-enhance.md](./archive/plans/plan-enhance.md) | 機能拡張(ENH-*)の計画（archive・7月ピボット前） |
 | [archive/plans/plan-gap-b.md](./archive/plans/plan-gap-b.md) | AWS版差分「簡易版ギャップ(B項目)」解消計画（archive・同上） |
 
@@ -81,6 +82,7 @@ OCI版 JetUse プロトタイプのドキュメント案内。**まずここか�
 | [setup/public-deploy-dedicated-compartment.md](./setup/public-deploy-dedicated-compartment.md) | **専用コンパートメント利用者向け** — テナンシ権限なしでDeploy to OCIを実行する手順 |
 | [setup/public-deploy-tenancy-admin.md](./setup/public-deploy-tenancy-admin.md) | **テナンシ管理者向け** — Dynamic Group / Policyの準備からデプロイ・可動確認まで |
 | [setup/orm.md](./setup/orm.md) | Deploy to Oracle Cloud の1スタックデプロイ |
+| [setup/orm-v2.md](./setup/orm-v2.md) | 初心者向けORM v2の入力、固定構成、現在の実装段階 |
 | [setup/hosted-agent-oauth.md](./setup/hosted-agent-oauth.md) | ホスト型エージェントのOAuth/IDCS設定 |
 | [setup/saml-federation.md](./setup/saml-federation.md) | SAMLフェデレーション手順 |
 

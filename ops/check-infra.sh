@@ -75,7 +75,7 @@ else
 fi
 
 # CI と同じ対象を validate する（backend 無しの init なので資格情報を要求しない）
-for d in infra/terraform/environments/dev infra/orm; do
+for d in infra/terraform/environments/dev infra/orm infra/orm-v2; do
   echo "[infra] terraform validate: $d"
   ( cd "$d" && terraform init -backend=false -input=false -lockfile=readonly >/dev/null && terraform validate >/dev/null )
 done
@@ -87,7 +87,7 @@ TF_VER=$(terraform version -json 2>/dev/null | sed -n 's/.*"terraform_version": 
 [ -n "$TF_VER" ] || TF_VER=$(terraform version | head -1 | sed 's/[^0-9.]*//')
 TF_MAJOR=${TF_VER%%.*}; TF_REST=${TF_VER#*.}; TF_MINOR=${TF_REST%%.*}
 if [ "${TF_MAJOR:-0}" -gt 1 ] || { [ "${TF_MAJOR:-0}" -eq 1 ] && [ "${TF_MINOR:-0}" -ge 7 ]; }; then
-  for d in infra/terraform/modules/iam infra/terraform/modules/hosted-agent; do
+  for d in infra/terraform/modules/iam infra/terraform/modules/hosted-agent infra/terraform/modules/identity-domain-app; do
     echo "[infra] terraform test: $d"
     ( cd "$d" && terraform init -backend=false -input=false -lockfile=readonly >/dev/null && terraform test )
   done
@@ -119,7 +119,9 @@ if ! PACKAGE_FROM_WORKTREE=1 bash scripts/package-orm-stacks.sh "$TMPD/orm-packa
   exit 1
 fi
 mkdir -p "$TMPD/orm-app"
+mkdir -p "$TMPD/orm-v2-app"
 unzip -q "$TMPD/orm-packages/jetuse-orm.zip" -d "$TMPD/orm-app"
+unzip -q "$TMPD/orm-packages/jetuse-orm-v2.zip" -d "$TMPD/orm-v2-app"
 for f in schema.yaml main.tf; do
   [ -f "$TMPD/orm-app/$f" ] || { echo "[infra] 梱包に $f が無い" >&2; exit 1; }
 done
@@ -129,5 +131,14 @@ for k in enable_dynamic_group enable_runtime_policy; do
 done
 terraform -chdir="$TMPD/orm-app" init -backend=false -input=false >/dev/null
 terraform -chdir="$TMPD/orm-app" validate >/dev/null
+for f in schema.yaml main.tf; do
+  [ -f "$TMPD/orm-v2-app/$f" ] || { echo "[infra] v2梱包に $f が無い" >&2; exit 1; }
+done
+for k in identity_domain_mode existing_identity_domain_ocid; do
+  grep -q "^  $k:" "$TMPD/orm-v2-app/schema.yaml" || {
+    echo "[infra] v2 schema.yaml に $k が無い" >&2; exit 1; }
+done
+terraform -chdir="$TMPD/orm-v2-app" init -backend=false -input=false >/dev/null
+terraform -chdir="$TMPD/orm-v2-app" validate >/dev/null
 
 echo "[infra] OK"
