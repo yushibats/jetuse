@@ -1,40 +1,16 @@
 locals {
   # random_string resourceはApplyまで値が未確定で、バケットのfor_eachを初回Planで
   # 決定できない。入力済みのcompartment OCIDから安定した6文字を算出し、一回のApplyで作れるようにする。
-  prefix             = "jetuse-${substr(sha256("${var.compartment_ocid}:${local.deploy_region}"), 0, 6)}"
+  prefix             = "jetuse-${substr(sha256("${var.compartment_ocid}:${var.deploy_region}"), 0, 6)}"
   admin_username     = "${local.prefix}-admin"
   adb_admin_password = random_password.adb_admin.result
   db_name            = substr(replace(local.prefix, "-", ""), 0, 14)
-
-  deployment_regions = {
-    "大阪（ap-osaka-1・推奨）" = {
-      name = "ap-osaka-1"
-      key  = "kix"
-    }
-    "シカゴ（us-chicago-1）" = {
-      name = "us-chicago-1"
-      key  = "ord"
-    }
-  }
-  deploy_region     = local.deployment_regions[var.deployment_region].name
-  deploy_region_key = local.deployment_regions[var.deployment_region].key
-
-  # Functionsは同一リージョンのOCIRイメージを要求する。v2で選べる大阪／シカゴは
-  # どちらも公開イメージの配置先なので、選択値からレジストリを決定する。
-  # `inspect tenancies in tenancy` が無いと region_subscriptions は null になる(実測 PUBLIC-IAM-02)。
-  # 下のtryがfalseへ丸めるため、読めたかどうかは別に持ってpreflightで案内する。
-  region_subscriptions_readable = try(length(data.oci_identity_region_subscriptions.this.region_subscriptions) > 0, false)
-  deploy_region_subscribed = try(contains(
-    [for r in data.oci_identity_region_subscriptions.this.region_subscriptions : r.region_name],
-    local.deploy_region,
-  ), false)
-
-  # テナンシのホームリージョン(Identity Domain 作成先)。providers.tf の home alias と同式。
-  home_region = try([for r in data.oci_identity_region_subscriptions.this.region_subscriptions :
-  r.region_name if r.is_home_region][0], var.region)
-  ocir_registry   = "${local.deploy_region_key}.ocir.io/idqcucnenh88"
-  api_image_url   = "${local.ocir_registry}/jetuse-api:${var.image_tag}"
-  fn_router_image = "${local.ocir_registry}/jetuse-fn-router:${var.image_tag}"
+  deploy_region      = var.deploy_region
+  deploy_region_key  = var.deploy_region_key
+  home_region        = var.home_region
+  ocir_registry      = "${var.deploy_region_key}.ocir.io/idqcucnenh88"
+  api_image_url      = "${local.ocir_registry}/jetuse-api:${var.image_tag}"
+  fn_router_image    = "${local.ocir_registry}/jetuse-fn-router:${var.image_tag}"
 
   domain_url = var.identity_domain_mode == "新しく作成（推奨）" ? (
     module.identity_domain[0].domain_url
@@ -47,6 +23,36 @@ locals {
   hosted_agents_enabled = true
   agent_app_ocids       = local.hosted_agents_enabled ? module.hosted_agent[0].app_ocids : {}
   agent_image_registry  = local.ocir_registry
+
+  # コンパートメント管理者版は、管理者が事前作成した単一Dynamic Groupを利用する。
+  # 自動診断を曖昧にしないため、管理者向け手順で提示するMatching Ruleとの完全一致を要求する。
+  required_dynamic_group_resource_types = [
+    "computecontainerinstance",
+    "fnfunc",
+    "autonomousdatabase",
+    "generativeaisemanticstore",
+    "generativeaihostedapplication",
+    "generativeaihostedapplicationiam",
+    "generativeaihosteddeployment",
+  ]
+  expected_dynamic_group_matching_rule = join("\n", concat(
+    ["Any {all {resource.type='${local.required_dynamic_group_resource_types[0]}', resource.compartment.id='${var.compartment_ocid}'},"],
+    [for resource_type in slice(local.required_dynamic_group_resource_types, 1, length(local.required_dynamic_group_resource_types) - 1) :
+      "     all {resource.type='${resource_type}', resource.compartment.id='${var.compartment_ocid}'},"
+    ],
+    ["     all {resource.type='${local.required_dynamic_group_resource_types[length(local.required_dynamic_group_resource_types) - 1]}', resource.compartment.id='${var.compartment_ocid}'}}"],
+  ))
+  existing_dynamic_group = try(one(data.oci_identity_dynamic_groups.existing[0].dynamic_groups), null)
+  normalize_expected_dynamic_group_rule = lower(replace(replace(replace(
+    local.expected_dynamic_group_matching_rule,
+  " ", ""), "\n", ""), "\t", ""))
+  normalize_existing_dynamic_group_rule = lower(replace(replace(replace(
+    try(local.existing_dynamic_group.matching_rule, ""),
+  " ", ""), "\n", ""), "\t", ""))
+  existing_dynamic_group_contract_valid = (
+    var.create_dynamic_groups
+    || local.normalize_existing_dynamic_group_rule == local.normalize_expected_dynamic_group_rule
+  )
 
   # API コンテナとエージェントコンテナの両方が読む素材。
   # api_environment 経由でエージェントへ渡すと

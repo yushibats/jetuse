@@ -173,4 +173,6 @@ jobs:
           fi
           gh release upload orm-main \
             "$RUNNER_TEMP/orm-packages/jetuse-orm.zip" \
+            "$RUNNER_TEMP/orm-packages/jetuse-orm-admin.zip" \
+            "$RUNNER_TEMP/orm-packages/jetuse-orm-compartment.zip" \
             --clobber

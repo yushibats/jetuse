@@ -1,0 +1,110 @@
+title: "JetUse on OCI — コンパートメント管理者向けかんたんデプロイ"
+description: >-
+  テナンシ管理者がDynamic Groupとデプロイ権限を準備した環境で使用します。
+  Terraformは既存Dynamic Groupの存在とMatching RuleをPlanで検査し、コンパートメント内に
+  Runtime Policy、専用Identity Domain、公開/機密OAuthアプリ、Autonomous Database 26ai、
+  ネットワーク、Generative AI Project、JetUseアプリケーションを新規作成します。
+  既存・共有Identity Domainは使用しないため、追加のOAuthアプリ情報やClient Secretの入力は不要です。
+  デプロイ先は大阪またはシカゴから選択でき、未購読の場合はサブスクライブ方法を表示します。
+schemaVersion: 1.1.0
+version: "20260825"
+
+logoUrl: ""
+locale: "en"
+
+variableGroups:
+  - title: "デプロイ先"
+    variables:
+      - deployment_region
+      - compartment_ocid
+      - admin_email
+  - title: "管理者が準備したIAM"
+    variables:
+      - existing_dynamic_group_name
+  - title: "Resource Managerが設定する内部値"
+    visible: false
+    variables:
+      - tenancy_ocid
+      - region
+      - image_tag
+
+variables:
+  deployment_region:
+    type: enum
+    title: "デプロイするリージョン"
+    description: >-
+      大阪またはシカゴを選択してください。大阪を推奨します。
+      未購読の場合はOCIコンソールの「リージョン管理」でサブスクライブしてからPlanを再実行します。
+    enum:
+      - 大阪（ap-osaka-1・推奨）
+      - シカゴ（us-chicago-1）
+    default: 大阪（ap-osaka-1・推奨）
+    required: true
+
+  compartment_ocid:
+    type: oci:identity:compartment:id
+    title: "JetUse専用コンパートメント"
+    description: >-
+      manage all-resources権限を付与されたJetUse専用コンパートメントを選択してください。
+      Identity DomainとOAuthアプリもこのコンパートメントに新規作成します。
+    required: true
+
+  admin_email:
+    type: string
+    title: "初期管理者のメールアドレス"
+    description: "作成するJetUse初期管理ユーザーのメールアドレスです。"
+    required: true
+
+  existing_dynamic_group_name:
+    type: string
+    title: "管理者が準備したDynamic Group名"
+    description: >-
+      テナンシ管理者から案内されたJetUse用Dynamic Group名を入力してください。
+      PlanでACTIVE状態と7種類のResource Principalを含むMatching Ruleを検査します。
+    required: true
+
+  tenancy_ocid:
+    type: oci:identity:tenancy:id
+    title: "Tenancy"
+    visible: false
+
+  region:
+    type: oci:identity:region:name
+    title: "Region"
+    visible: false
+
+  image_tag:
+    type: string
+    title: "Container image tag"
+    default: "latest"
+    visible: false
+
+outputs:
+  app_url:
+    type: link
+    title: "JetUse URL"
+  demo_username:
+    type: string
+    title: "初期管理ユーザー"
+  demo_password:
+    type: string
+    title: "初期パスワード"
+  identity_domain_url:
+    type: link
+    title: "Identity Domain URL"
+  project_ocid:
+    type: string
+    title: "Generative AI Project OCID"
+  preflight_result:
+    type: string
+    title: "事前確認結果"
+
+outputGroups:
+  - title: "デプロイ結果"
+    outputs:
+      - app_url
+      - demo_username
+      - demo_password
+      - identity_domain_url
+      - project_ocid
+      - preflight_result

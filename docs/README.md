@@ -82,7 +82,7 @@ OCI版 JetUse プロトタイプのドキュメント案内。**まずここか�
 | [setup/public-deploy-dedicated-compartment.md](./setup/public-deploy-dedicated-compartment.md) | **専用コンパートメント利用者向け** — テナンシ権限なしでDeploy to OCIを実行する手順 |
 | [setup/public-deploy-tenancy-admin.md](./setup/public-deploy-tenancy-admin.md) | **テナンシ管理者向け** — Dynamic Group / Policyの準備からデプロイ・可動確認まで |
 | [setup/orm.md](./setup/orm.md) | Deploy to Oracle Cloud の1スタックデプロイ |
-| [setup/orm-v2.md](./setup/orm-v2.md) | 初心者向けORM v2の入力、固定構成、現在の実装段階 |
+| [setup/orm-v2.md](./setup/orm-v2.md) | 管理者/コンパートメント管理者向けORM v2、事前IAM、OAuthの扱い |
 | [setup/hosted-agent-oauth.md](./setup/hosted-agent-oauth.md) | ホスト型エージェントのOAuth/IDCS設定 |
 | [setup/saml-federation.md](./setup/saml-federation.md) | SAMLフェデレーション手順 |
 

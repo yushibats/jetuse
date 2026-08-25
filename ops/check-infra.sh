@@ -75,7 +75,7 @@ else
 fi
 
 # CI と同じ対象を validate する（backend 無しの init なので資格情報を要求しない）
-for d in infra/terraform/environments/dev infra/orm infra/orm-v2; do
+for d in infra/terraform/environments/dev infra/orm infra/orm-v2-admin infra/orm-v2-compartment; do
   echo "[infra] terraform validate: $d"
   ( cd "$d" && terraform init -backend=false -input=false -lockfile=readonly >/dev/null && terraform validate >/dev/null )
 done
@@ -87,7 +87,7 @@ TF_VER=$(terraform version -json 2>/dev/null | sed -n 's/.*"terraform_version": 
 [ -n "$TF_VER" ] || TF_VER=$(terraform version | head -1 | sed 's/[^0-9.]*//')
 TF_MAJOR=${TF_VER%%.*}; TF_REST=${TF_VER#*.}; TF_MINOR=${TF_REST%%.*}
 if [ "${TF_MAJOR:-0}" -gt 1 ] || { [ "${TF_MAJOR:-0}" -eq 1 ] && [ "${TF_MINOR:-0}" -ge 7 ]; }; then
-  for d in infra/orm-v2 infra/terraform/modules/iam infra/terraform/modules/hosted-agent infra/terraform/modules/identity-domain-app; do
+  for d in infra/orm-v2-admin infra/terraform/modules/orm-v2-stack infra/terraform/modules/iam infra/terraform/modules/hosted-agent infra/terraform/modules/identity-domain-app; do
     echo "[infra] terraform test: $d"
     ( cd "$d" && terraform init -backend=false -input=false -lockfile=readonly >/dev/null && terraform test )
   done
@@ -119,9 +119,11 @@ if ! PACKAGE_FROM_WORKTREE=1 bash scripts/package-orm-stacks.sh "$TMPD/orm-packa
   exit 1
 fi
 mkdir -p "$TMPD/orm-app"
-mkdir -p "$TMPD/orm-v2-app"
+mkdir -p "$TMPD/orm-admin-app"
+mkdir -p "$TMPD/orm-compartment-app"
 unzip -q "$TMPD/orm-packages/jetuse-orm.zip" -d "$TMPD/orm-app"
-unzip -q "$TMPD/orm-packages/jetuse-orm-v2.zip" -d "$TMPD/orm-v2-app"
+unzip -q "$TMPD/orm-packages/jetuse-orm-admin.zip" -d "$TMPD/orm-admin-app"
+unzip -q "$TMPD/orm-packages/jetuse-orm-compartment.zip" -d "$TMPD/orm-compartment-app"
 for f in schema.yaml main.tf; do
   [ -f "$TMPD/orm-app/$f" ] || { echo "[infra] 梱包に $f が無い" >&2; exit 1; }
 done
@@ -132,13 +134,26 @@ done
 terraform -chdir="$TMPD/orm-app" init -backend=false -input=false >/dev/null
 terraform -chdir="$TMPD/orm-app" validate >/dev/null
 for f in schema.yaml main.tf; do
-  [ -f "$TMPD/orm-v2-app/$f" ] || { echo "[infra] v2梱包に $f が無い" >&2; exit 1; }
+  [ -f "$TMPD/orm-admin-app/$f" ] || { echo "[infra] 管理者版梱包に $f が無い" >&2; exit 1; }
 done
 for k in deployment_region identity_domain_mode existing_identity_domain_ocid; do
-  grep -q "^  $k:" "$TMPD/orm-v2-app/schema.yaml" || {
-    echo "[infra] v2 schema.yaml に $k が無い" >&2; exit 1; }
+  grep -q "^  $k:" "$TMPD/orm-admin-app/schema.yaml" || {
+    echo "[infra] 管理者版 schema.yaml に $k が無い" >&2; exit 1; }
 done
-terraform -chdir="$TMPD/orm-v2-app" init -backend=false -input=false >/dev/null
-terraform -chdir="$TMPD/orm-v2-app" validate >/dev/null
+terraform -chdir="$TMPD/orm-admin-app" init -backend=false -input=false >/dev/null
+terraform -chdir="$TMPD/orm-admin-app" validate >/dev/null
+for f in schema.yaml main.tf; do
+  [ -f "$TMPD/orm-compartment-app/$f" ] || { echo "[infra] コンパートメント版梱包に $f が無い" >&2; exit 1; }
+done
+for k in deployment_region existing_dynamic_group_name; do
+  grep -q "^  $k:" "$TMPD/orm-compartment-app/schema.yaml" || {
+    echo "[infra] コンパートメント版 schema.yaml に $k が無い" >&2; exit 1; }
+done
+if grep -q '^  identity_domain_mode:' "$TMPD/orm-compartment-app/schema.yaml"; then
+  echo "[infra] コンパートメント版に既存Identity Domain選択を表示してはいけません" >&2
+  exit 1
+fi
+terraform -chdir="$TMPD/orm-compartment-app" init -backend=false -input=false >/dev/null
+terraform -chdir="$TMPD/orm-compartment-app" validate >/dev/null
 
 echo "[infra] OK"

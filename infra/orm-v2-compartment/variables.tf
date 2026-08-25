@@ -7,9 +7,8 @@ variable "region" {
   type = string
 }
 
-# 初心者向け入力は以下の4項目 + 既存Domain選択時だけ表示する1項目に限定する。
 variable "compartment_ocid" {
-  description = "JetUseの全リソースを新規作成するコンパートメント"
+  description = "JetUseの全リソースを新規作成する専用コンパートメント"
   type        = string
 }
 
@@ -37,32 +36,19 @@ variable "admin_email" {
   }
 }
 
-variable "identity_domain_mode" {
-  description = "Identity Domainを新規作成するか、既存Domainを利用するか"
+variable "existing_dynamic_group_name" {
+  description = "テナンシ管理者がJetUse用に事前作成したDynamic Group名"
   type        = string
-  default     = "新しく作成（推奨）"
-
-  validation {
-    condition     = contains(["新しく作成（推奨）", "既存のIdentity Domainを使用"], var.identity_domain_mode)
-    error_message = "Identity Domainの準備方法は「新しく作成」または「既存を使用」を選択してください。"
-  }
-}
-
-variable "existing_identity_domain_ocid" {
-  description = "既存Identity DomainのOCID（既存利用の場合のみ）"
-  type        = string
-  default     = ""
 
   validation {
     condition = (
-      trimspace(var.existing_identity_domain_ocid) == ""
-      || can(regex("^ocid1\\.domain\\.", var.existing_identity_domain_ocid))
+      trimspace(var.existing_dynamic_group_name) != ""
+      && !strcontains(var.existing_dynamic_group_name, "\n")
     )
-    error_message = "Identity Domain OCIDの形式が正しくありません。"
+    error_message = "管理者から案内されたDynamic Group名を入力してください。"
   }
 }
 
-# 公開ZIP生成時にcommit SHAへ固定する内部値。schema.yamlでは常に非表示。
 variable "image_tag" {
   description = "JetUseコンテナ群に共通する内部リリースタグ"
   type        = string

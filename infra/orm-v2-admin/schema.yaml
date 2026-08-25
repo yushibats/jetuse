@@ -1,15 +1,15 @@
-title: "JetUse on OCI — かんたんデプロイ v2"
+title: "JetUse on OCI — 管理者向けかんたんデプロイ"
 description: >-
   このテンプレートは、JetUseの実行に必要なネットワーク、Autonomous Database 26ai、
   Generative AI Project、IAM、アプリケーションを新規に一括作成します。
   既存のVCN、データベース、Dynamic Group、Policyを指定する必要はありません。
-  標準版はDynamic GroupとPolicyも新規作成するため、実行ユーザーにはテナンシIAMを
+  管理者版はDynamic GroupとPolicyも新規作成するため、実行ユーザーにはテナンシIAMを
   管理できる権限が必要です。
   デプロイ先は大阪またはシカゴから選択できます。選択したリージョンが未購読の場合は、
   OCIのリージョン管理からサブスクライブする案内をPlanに表示します。Plan時に権限、
   リージョン購読、Identity Domainの状態を確認し、合格後にリソース作成へ進みます。
 schemaVersion: 1.1.0
-version: "20260817"
+version: "20260825"
 
 logoUrl: ""
 locale: "en"

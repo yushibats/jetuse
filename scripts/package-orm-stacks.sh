@@ -23,14 +23,15 @@ mkdir -p "${source_tree}"
 if [[ "${PACKAGE_FROM_WORKTREE:-0}" == "1" ]]; then
   echo "[package] 作業ツリーから梱包します（検査用。配布には使わないこと）" >&2
   git -C "${repo_root}" ls-files --cached --others --exclude-standard --deduplicate \
-    -- infra/orm infra/orm-v2 infra/terraform/modules \
+    -- infra/orm infra/orm-v2-admin infra/orm-v2-compartment infra/terraform/modules \
     | (cd "${repo_root}" && while IFS= read -r file; do [ -f "${file}" ] && printf '%s\n' "${file}"; done) \
     | tar -cf - -C "${repo_root}" -T - \
     | tar -xf - -C "${source_tree}"
 else
   git -C "${repo_root}" archive --format=tar HEAD \
     infra/orm \
-    infra/orm-v2 \
+    infra/orm-v2-admin \
+    infra/orm-v2-compartment \
     infra/terraform/modules \
     | tar -xf - -C "${source_tree}"
 fi
@@ -53,7 +54,10 @@ package_stack() { # package_stack <source-directory-name> <archive-base-name>
   # Resource Manager runs Terraform from the ZIP root. Keep the rewrite portable
   # across GNU and BSD sed by using a temporary file instead of sed -i.
   rewrite "${app_stage}/main.tf" 's#../terraform/modules/#./terraform/modules/#g'
-  rewrite "${app_stage}/spa.tf" 's#${path.module}/../../packages/web/dist#${path.module}/packages/web/dist#g'
+  rewrite "${app_stage}/main.tf" 's#${path.module}/../../packages/web/dist#${path.module}/packages/web/dist#g'
+  if [[ -f "${app_stage}/spa.tf" ]]; then
+    rewrite "${app_stage}/spa.tf" 's#${path.module}/../../packages/web/dist#${path.module}/packages/web/dist#g'
+  fi
 
   # Release archives use immutable image tags shared by the API, Functions and agents.
   if [[ -n "${GITHUB_SHA:-}" ]]; then
@@ -85,4 +89,5 @@ package_stack() { # package_stack <source-directory-name> <archive-base-name>
 }
 
 package_stack "orm" "jetuse-orm"
-package_stack "orm-v2" "jetuse-orm-v2"
+package_stack "orm-v2-admin" "jetuse-orm-admin"
+package_stack "orm-v2-compartment" "jetuse-orm-compartment"

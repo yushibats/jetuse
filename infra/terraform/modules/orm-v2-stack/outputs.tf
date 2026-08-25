@@ -25,15 +25,15 @@ output "identity_domain_url" {
 }
 
 output "runtime_dynamic_group" {
-  value = module.iam.runtime_dynamic_group
+  value = var.create_dynamic_groups ? module.iam.runtime_dynamic_group : var.existing_dynamic_group_name
 }
 
 output "adb_dynamic_group" {
-  value = module.iam.adb_dynamic_group
+  value = var.create_dynamic_groups ? module.iam.adb_dynamic_group : var.existing_dynamic_group_name
 }
 
 output "semantic_store_dynamic_group" {
-  value = module.iam.semantic_store_dynamic_group
+  value = var.create_dynamic_groups ? module.iam.semantic_store_dynamic_group : var.existing_dynamic_group_name
 }
 
 output "runtime_policy_id" {
@@ -52,6 +52,11 @@ output "project_ocid" {
 output "preflight_result" {
   description = "Plan時の日本語事前確認結果"
   value       = jsonencode(terraform_data.preflight.output)
+}
+
+output "expected_dynamic_group_matching_rule" {
+  description = "コンパートメント管理者版で管理者が事前作成するDynamic GroupのMatching Rule"
+  value       = local.expected_dynamic_group_matching_rule
 }
 
 output "note" {

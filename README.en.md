@@ -8,17 +8,25 @@ all running on OCI managed services.
 
 ## Deploy
 
-[![Deploy JetUse to Oracle Cloud](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/sogawa-yk/jetuse/releases/download/orm-main/jetuse-orm.zip)
+### Tenancy IAM administrator
 
-The button hands one Terraform stack — IAM plus the application — to OCI Resource Manager (no working
-directory needed). It builds VCN / Autonomous Database / API Gateway / Container Instance / Functions /
-Object Storage / Identity Domain, and you sign in to the `app_url` output with `demo_username` /
-`demo_password`. The first apply takes 10–15 minutes.
+[![Deploy JetUse as a tenancy IAM administrator](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/sogawa-yk/jetuse/releases/download/orm-main/jetuse-orm-admin.zip)
 
-- Inputs are essentially the target compartment and `prefix`. Passwords are generated; images come from the public OCIR.
-- Toggle `enable_dynamic_group` / `enable_runtime_policy` to match the executing user's IAM permissions.
-- Supported regions, service limits, and the pre-deploy checklist: [Resource Manager guide](./docs/setup/orm.md).
-  Required permissions: [Public IAM requirements](./docs/setup/public-iam-requirements.md) and the [IAM guide](./docs/setup/iam.md).
+Creates all resources, including Dynamic Groups, the runtime policy, a dedicated Identity Domain, and both
+public and confidential OAuth clients.
+
+### Compartment administrator
+
+[![Deploy JetUse as a compartment administrator](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/sogawa-yk/jetuse/releases/download/orm-main/jetuse-orm-compartment.zip)
+
+Use this after a tenancy administrator prepares the Dynamic Group and deployment permissions. Terraform
+checks the Dynamic Group's existence, state, and matching rule during Plan, then creates the compartment
+runtime policy, a dedicated Identity Domain, the SPA public client, and the Hosted Agent confidential client.
+No existing Identity Domain, Client ID, or Client Secret input is required.
+
+Both templates deploy to Osaka or Chicago and explain how to subscribe when the selected region is not yet
+enabled. See the [ORM v2 guide](./docs/setup/orm-v2.md) for profile selection and IAM prerequisites. The
+[Resource Manager guide](./docs/setup/orm.md) documents the legacy advanced-input stack.
 
 ## Features
 

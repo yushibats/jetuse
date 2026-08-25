@@ -12,9 +12,7 @@ resource "oci_objectstorage_object" "adb_wallet" {
   content_type = "text/plain"
 }
 
-# SPA dist のパス(release.yml が main で生成・コミット)
 locals {
-  spa_dist_dir = "${path.module}/../../packages/web/dist"
   mime = {
     html  = "text/html; charset=utf-8"
     js    = "text/javascript; charset=utf-8"
@@ -33,7 +31,7 @@ locals {
   }
   # config.json は Terraform 生成版で上書きするため一括アップロードから除外
   spa_files = toset([
-    for f in fileset(local.spa_dist_dir, "**") : f if f != "config.json"
+    for f in fileset(var.spa_dist_dir, "**") : f if f != "config.json"
   ])
 }
 
@@ -44,7 +42,7 @@ resource "oci_objectstorage_object" "spa" {
   namespace    = module.object_storage.namespace
   bucket       = module.object_storage.spa_bucket
   object       = each.value
-  source       = "${local.spa_dist_dir}/${each.value}"
+  source       = "${var.spa_dist_dir}/${each.value}"
   content_type = lookup(local.mime, element(reverse(split(".", each.value)), 0), "application/octet-stream")
   # ハッシュ付きアセットは長期キャッシュ、それ以外は都度検証
   cache_control = startswith(each.value, "assets/") ? "public, max-age=31536000, immutable" : "no-cache"

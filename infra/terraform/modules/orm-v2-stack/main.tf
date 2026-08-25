@@ -1,5 +1,12 @@
-# JetUse ORM v2: 初めて OCI を使う人向けの固定構成スタック。
-# 既存リソースの再利用は Identity Domain だけに限定し、それ以外はこのスタックで新規作成する。
+# JetUse ORM v2の共有実装。管理者版／コンパートメント管理者版のルートから呼び出す。
+
+data "oci_identity_dynamic_groups" "existing" {
+  count          = var.create_dynamic_groups ? 0 : 1
+  provider       = oci.home
+  compartment_id = var.tenancy_ocid
+  name           = var.existing_dynamic_group_name
+  state          = "ACTIVE"
+}
 
 data "oci_identity_domain" "existing" {
   count = (
@@ -27,8 +34,12 @@ data "oci_identity_domains_setting" "existing" {
 # APIだけでは完全判定できない項目を「確認済み」チェックボックスで利用者へ転嫁しない。
 resource "terraform_data" "preflight" {
   input = {
-    deployment_region = local.deploy_region_subscribed ? "新規作成可能: ${var.deployment_region}" : "停止: ${var.deployment_region}は未購読です"
-    iam               = "新規作成: JetUse専用Dynamic GroupとPolicy"
+    deployment_region = var.deploy_region_subscribed ? "新規作成可能: ${var.deployment_region_label}" : "停止: ${var.deployment_region_label}は未購読です"
+    iam = var.create_dynamic_groups ? (
+      "新規作成: JetUse専用Dynamic GroupとRuntime Policy"
+      ) : (
+      "確認済み: 既存Dynamic Group ${var.existing_dynamic_group_name} / 新規作成: Runtime Policy"
+    )
     identity_domain = var.identity_domain_mode == "新しく作成（推奨）" ? (
       "新規作成: JetUse専用Identity Domain"
       ) : (
@@ -38,13 +49,21 @@ resource "terraform_data" "preflight" {
 
   lifecycle {
     precondition {
-      condition     = local.region_subscriptions_readable
-      error_message = "【実行ユーザーの権限が不足】テナンシのリージョン購読一覧を取得できません。デプロイ実行ユーザーに inspect tenancies in tenancy を許可してから、Planを再実行してください。"
+      condition     = var.create_dynamic_groups || trimspace(var.existing_dynamic_group_name) != ""
+      error_message = "【Dynamic Groupが未入力】コンパートメント管理者版では、テナンシ管理者が事前作成したDynamic Group名を入力してください。"
     }
 
     precondition {
-      condition     = !local.region_subscriptions_readable || local.deploy_region_subscribed
-      error_message = "【リージョンが未購読】選択した${var.deployment_region}をこのテナンシで利用できません。OCIコンソールの「リージョン管理」から${local.deploy_region}をサブスクライブし、購読完了後にPlanを再実行してください。"
+      condition = (
+        var.create_dynamic_groups
+        || length(try(data.oci_identity_dynamic_groups.existing[0].dynamic_groups, [])) == 1
+      )
+      error_message = "【Dynamic Groupを確認できません】入力したACTIVEなDynamic Groupが見つかりません。名前と inspect dynamic-groups in tenancy 権限を確認してください。"
+    }
+
+    precondition {
+      condition     = local.existing_dynamic_group_contract_valid
+      error_message = "【Dynamic GroupのMatching Ruleが不足】JetUseが必要とする7種類のResource Principalと対象コンパートメントを完全にはカバーしていません。管理者向け手順に記載したMatching Ruleへ更新してからPlanを再実行してください。期待するRule: ${local.expected_dynamic_group_matching_rule}"
     }
 
     precondition {
@@ -123,13 +142,13 @@ resource "random_password" "demo" {
 
 # IAMもアプリ本体と同じResource Manager stackで新規作成する。
 module "iam" {
-  source    = "../terraform/modules/iam"
+  source    = "../iam"
   providers = { oci = oci.home }
 
   tenancy_ocid              = var.tenancy_ocid
   compartment_ocid          = var.compartment_ocid
   prefix                    = local.prefix
-  enable_dynamic_group      = true
+  enable_dynamic_group      = var.create_dynamic_groups
   enable_runtime_policy     = true
   enable_semantic_store     = true
   enable_project_autocreate = false
@@ -137,13 +156,13 @@ module "iam" {
   # ホスト型エージェントを配備するときだけ runtime DG にホスト型リソースを含める(PORT-03)。
   include_hosted_agent_principals = local.hosted_agents_enabled
 
-  existing_dynamic_group = ""
+  existing_dynamic_group = var.existing_dynamic_group_name
 
   depends_on = [terraform_data.preflight]
 }
 
 module "network" {
-  source              = "../terraform/modules/network"
+  source              = "../network"
   compartment_ocid    = var.compartment_ocid
   prefix              = local.prefix
   public_subnet_cidr  = "10.1.0.0/24"
@@ -153,7 +172,7 @@ module "network" {
 }
 
 module "object_storage" {
-  source           = "../terraform/modules/object-storage"
+  source           = "../object-storage"
   compartment_ocid = var.compartment_ocid
   prefix           = local.prefix
   region           = local.deploy_region
@@ -162,7 +181,7 @@ module "object_storage" {
 }
 
 module "adb" {
-  source           = "../terraform/modules/adb"
+  source           = "../adb"
   compartment_ocid = var.compartment_ocid
   prefix           = local.prefix
   admin_password   = local.adb_admin_password
@@ -183,7 +202,7 @@ module "adb" {
 #       (3) push(release.yml)は repo 事前作成済みなら通る(無いとOCIRがルートに作成を試み権限不足で失敗)。
 
 module "observability" {
-  source              = "../terraform/modules/observability"
+  source              = "../observability"
   compartment_ocid    = var.compartment_ocid
   prefix              = local.prefix
   apigw_deployment_id = module.api_gateway.deployment_id
@@ -201,7 +220,7 @@ resource "oci_generative_ai_project" "this" {
 }
 
 module "functions" {
-  source           = "../terraform/modules/functions"
+  source           = "../functions"
   compartment_ocid = var.compartment_ocid
   prefix           = local.prefix
   subnet_id        = module.network.private_subnet_id
@@ -216,7 +235,7 @@ module "functions" {
 }
 
 module "container_instance" {
-  source           = "../terraform/modules/container-instance"
+  source           = "../container-instance"
   compartment_ocid = var.compartment_ocid
   prefix           = local.prefix
   subnet_id        = module.network.private_subnet_id
@@ -245,7 +264,7 @@ locals {
 }
 
 module "api_gateway" {
-  source             = "../terraform/modules/api-gateway"
+  source             = "../api-gateway"
   compartment_ocid   = var.compartment_ocid
   prefix             = local.prefix
   region             = local.deploy_region
@@ -259,7 +278,7 @@ module "api_gateway" {
 
 module "identity_domain" {
   count            = var.identity_domain_mode == "新しく作成（推奨）" ? 1 : 0
-  source           = "../terraform/modules/identity-domain"
+  source           = "../identity-domain"
   providers        = { oci = oci.home }
   compartment_ocid = var.compartment_ocid
   prefix           = local.prefix
@@ -299,7 +318,7 @@ resource "time_sleep" "iam_propagation" {
 # min_replica=0 なので、使わない利用者にアイドル課金は発生しない。
 module "hosted_agent" {
   count             = local.hosted_agents_enabled ? 1 : 0
-  source            = "../terraform/modules/hosted-agent"
+  source            = "../hosted-agent"
   compartment_ocid  = var.compartment_ocid
   prefix            = local.prefix
   region            = local.deploy_region
@@ -318,7 +337,7 @@ module "hosted_agent" {
 
 module "identity_domain_app" {
   count         = 1
-  source        = "../terraform/modules/identity-domain-app"
+  source        = "../identity-domain-app"
   prefix        = local.prefix
   idcs_endpoint = local.domain_url
   redirect_uri  = "https://${module.api_gateway.endpoint}/"

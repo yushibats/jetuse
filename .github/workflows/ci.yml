@@ -97,11 +97,32 @@ jobs:
         run: |
           terraform init -backend=false -input=false
           terraform validate
-      - name: validate orm v2 (初心者向けスタック)
-        working-directory: infra/orm-v2
+      # ORM v2のplan testとZIPはSPA成果物を参照するため、Terraform検査より先に生成する。
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: packages/web/package-lock.json
+      - name: Build SPA (ORM v2 test / zip の同梱物)
+        working-directory: packages/web
+        run: |
+          npm ci
+          npm run build
+      - name: validate ORM v2 admin (テナンシIAM管理者向け)
+        working-directory: infra/orm-v2-admin
         run: |
           terraform init -backend=false -input=false
           terraform validate
+          terraform test
+      - name: validate ORM v2 compartment (コンパートメント管理者向け)
+        working-directory: infra/orm-v2-compartment
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+      - name: test ORM v2 profile separation and IAM preflight
+        working-directory: infra/terraform/modules/orm-v2-stack
+        run: |
+          terraform init -backend=false -input=false
           terraform test
       - name: test public IAM policy contract
         working-directory: infra/terraform/modules/iam
@@ -121,9 +142,44 @@ jobs:
       - name: test hosted agent CLI scripts
         # terraform test は local-exec を実行しないので、シェル側の判断はモックで確認する
         run: sh infra/terraform/modules/hosted-agent/scripts/smoke_test.sh
-      # **zip は SPA の dist を同梱する。** dist は追跡しないので、ここで作る。
-      # 以前は追跡された dist をそのまま使えたが、ビルド出力が環境で一致しない問題で
-      # 貢献の入口を塞いでいた（上の web ジョブのコメント参照）。
+      - name: Build Deploy to OCI archive
+        run: bash scripts/package-orm-stacks.sh "$RUNNER_TEMP/orm-packages"
+      - name: Validate packaged JetUse stack
+        run: |
+          mkdir -p "$RUNNER_TEMP/orm-app"
+          mkdir -p "$RUNNER_TEMP/orm-admin-app"
+          mkdir -p "$RUNNER_TEMP/orm-compartment-app"
+          unzip -q "$RUNNER_TEMP/orm-packages/jetuse-orm.zip" -d "$RUNNER_TEMP/orm-app"
+          unzip -q "$RUNNER_TEMP/orm-packages/jetuse-orm-admin.zip" -d "$RUNNER_TEMP/orm-admin-app"
+          unzip -q "$RUNNER_TEMP/orm-packages/jetuse-orm-compartment.zip" -d "$RUNNER_TEMP/orm-compartment-app"
+          test -f "$RUNNER_TEMP/orm-app/schema.yaml"
+          test -f "$RUNNER_TEMP/orm-app/main.tf"
+          grep -q '^  enable_dynamic_group:' "$RUNNER_TEMP/orm-app/schema.yaml"
+          grep -q '^  enable_runtime_policy:' "$RUNNER_TEMP/orm-app/schema.yaml"
+          test -f "$RUNNER_TEMP/orm-admin-app/schema.yaml"
+          test -f "$RUNNER_TEMP/orm-admin-app/main.tf"
+          grep -q '^  deployment_region:' "$RUNNER_TEMP/orm-admin-app/schema.yaml"
+          grep -q '^  identity_domain_mode:' "$RUNNER_TEMP/orm-admin-app/schema.yaml"
+          grep -q '^  existing_identity_domain_ocid:' "$RUNNER_TEMP/orm-admin-app/schema.yaml"
+          test -f "$RUNNER_TEMP/orm-compartment-app/schema.yaml"
+          test -f "$RUNNER_TEMP/orm-compartment-app/main.tf"
+          grep -q '^  deployment_region:' "$RUNNER_TEMP/orm-compartment-app/schema.yaml"
+          grep -q '^  existing_dynamic_group_name:' "$RUNNER_TEMP/orm-compartment-app/schema.yaml"
+          ! grep -q '^  identity_domain_mode:' "$RUNNER_TEMP/orm-compartment-app/schema.yaml"
+          terraform -chdir="$RUNNER_TEMP/orm-app" init -backend=false -input=false
+          terraform -chdir="$RUNNER_TEMP/orm-app" validate
+          terraform -chdir="$RUNNER_TEMP/orm-admin-app" init -backend=false -input=false
+          terraform -chdir="$RUNNER_TEMP/orm-admin-app" validate
+          terraform -chdir="$RUNNER_TEMP/orm-compartment-app" init -backend=false -input=false
+          terraform -chdir="$RUNNER_TEMP/orm-compartment-app" validate
+
+  orm-v2-terraform-1-5:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: 1.5.7
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
@@ -134,44 +190,20 @@ jobs:
         run: |
           npm ci
           npm run build
-      - name: Build Deploy to OCI archive
-        run: bash scripts/package-orm-stacks.sh "$RUNNER_TEMP/orm-packages"
-      - name: Validate packaged JetUse stack
+      - name: Validate both ORM v2 roots with Resource Manager Terraform version
         run: |
-          mkdir -p "$RUNNER_TEMP/orm-app"
-          mkdir -p "$RUNNER_TEMP/orm-v2-app"
-          unzip -q "$RUNNER_TEMP/orm-packages/jetuse-orm.zip" -d "$RUNNER_TEMP/orm-app"
-          unzip -q "$RUNNER_TEMP/orm-packages/jetuse-orm-v2.zip" -d "$RUNNER_TEMP/orm-v2-app"
-          test -f "$RUNNER_TEMP/orm-app/schema.yaml"
-          test -f "$RUNNER_TEMP/orm-app/main.tf"
-          grep -q '^  enable_dynamic_group:' "$RUNNER_TEMP/orm-app/schema.yaml"
-          grep -q '^  enable_runtime_policy:' "$RUNNER_TEMP/orm-app/schema.yaml"
-          test -f "$RUNNER_TEMP/orm-v2-app/schema.yaml"
-          test -f "$RUNNER_TEMP/orm-v2-app/main.tf"
-          grep -q '^  deployment_region:' "$RUNNER_TEMP/orm-v2-app/schema.yaml"
-          grep -q '^  identity_domain_mode:' "$RUNNER_TEMP/orm-v2-app/schema.yaml"
-          grep -q '^  existing_identity_domain_ocid:' "$RUNNER_TEMP/orm-v2-app/schema.yaml"
-          terraform -chdir="$RUNNER_TEMP/orm-app" init -backend=false -input=false
-          terraform -chdir="$RUNNER_TEMP/orm-app" validate
-          terraform -chdir="$RUNNER_TEMP/orm-v2-app" init -backend=false -input=false
-          terraform -chdir="$RUNNER_TEMP/orm-v2-app" validate
-
-  orm-v2-terraform-1-5:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.5.7
-      - name: Validate ORM v2 with Resource Manager Terraform version
-        working-directory: infra/orm-v2
-        run: |
-          terraform init -backend=false -input=false
-          terraform validate
-      - name: Validate packaged ORM v2 with Resource Manager Terraform version
+          terraform -chdir=infra/orm-v2-admin init -backend=false -input=false
+          terraform -chdir=infra/orm-v2-admin validate
+          terraform -chdir=infra/orm-v2-compartment init -backend=false -input=false
+          terraform -chdir=infra/orm-v2-compartment validate
+      - name: Validate packaged ORM v2 roots with Resource Manager Terraform version
         run: |
           bash scripts/package-orm-stacks.sh "$RUNNER_TEMP/orm-packages"
-          mkdir -p "$RUNNER_TEMP/orm-v2-app"
-          unzip -q "$RUNNER_TEMP/orm-packages/jetuse-orm-v2.zip" -d "$RUNNER_TEMP/orm-v2-app"
-          terraform -chdir="$RUNNER_TEMP/orm-v2-app" init -backend=false -input=false
-          terraform -chdir="$RUNNER_TEMP/orm-v2-app" validate
+          mkdir -p "$RUNNER_TEMP/orm-admin-app"
+          mkdir -p "$RUNNER_TEMP/orm-compartment-app"
+          unzip -q "$RUNNER_TEMP/orm-packages/jetuse-orm-admin.zip" -d "$RUNNER_TEMP/orm-admin-app"
+          unzip -q "$RUNNER_TEMP/orm-packages/jetuse-orm-compartment.zip" -d "$RUNNER_TEMP/orm-compartment-app"
+          terraform -chdir="$RUNNER_TEMP/orm-admin-app" init -backend=false -input=false
+          terraform -chdir="$RUNNER_TEMP/orm-admin-app" validate
+          terraform -chdir="$RUNNER_TEMP/orm-compartment-app" init -backend=false -input=false
+          terraform -chdir="$RUNNER_TEMP/orm-compartment-app" validate

@@ -111,5 +111,5 @@ run "unsubscribed_chicago_stops_preflight" {
     }
   }
 
-  expect_failures = [terraform_data.preflight]
+  expect_failures = [terraform_data.region_preflight]
 }

@@ -1,94 +1,125 @@
-# JetUse ORM v2（初心者向け・構築中）
+# JetUse ORM v2 — 権限別かんたんデプロイ
 
-`infra/orm-v2` は、初めてOCIのAIサービスを使う利用者向けに、既存の
-`infra/orm` とは分離して作っている次期Resource Managerテンプレートです。
-現行版を上書きせず、完成条件を満たしてから `jetuse-orm-v2.zip` として公開します。
+ORM v2は、利用者の権限に合わせて2つのResource Managerテンプレートに分かれています。
+リポジトリは分けず、共通のTerraformモジュールから別々のZIPを生成します。
 
-標準版はDynamic GroupとPolicyを含めて新規作成するため、実行ユーザーにはテナンシIAMを
-管理できる権限が必要です。Identity Domainで「既存を使用」を選んでも、このIAM要件は変わりません。
+> SQL Search（Vault / Database Tools / Semantic Store / enrichment）の完全自動化はPhase 2です。
+> 現在のZIPは入力画面、IAM分離、リージョン購読確認、Identity Domain/OAuth、基本アプリ基盤までを対象とします。
 
-> 現在はPhase 1です。入力画面、固定構成、リージョン購読確認、Identity Domainの分岐、
-> Generative AI ProjectのTerraform管理、基本事前確認までは実装済みです。
-> SQL Search（Vault / Database Tools / Semantic Store / enrichment）はPhase 2のため、
-> このブランチのZIPはまだ一般公開・本番利用しません。
+## どちらを使うか
 
-## 入力画面
+| 実行者 | テンプレート | ZIP | 管理者の事前作業 |
+|---|---|---|---|
+| Dynamic GroupとPolicyを作成できるテナンシIAM管理者 | 管理者版 | `jetuse-orm-admin.zip` | なし |
+| JetUse専用コンパートメントの`manage all-resources`だけを持つユーザー | コンパートメント版 | `jetuse-orm-compartment.zip` | Dynamic Group 1本とデプロイ権限Policy |
 
-通常は次の4項目だけを入力します。
+### 管理者版
 
-| 表示名 | 内容 |
+[![Deploy JetUse as a tenancy IAM administrator](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/sogawa-yk/jetuse/releases/download/orm-main/jetuse-orm-admin.zip)
+
+通常の入力は次の4項目です。
+
+| 入力 | 内容 |
 |---|---|
 | デプロイするリージョン | 大阪（推奨）またはシカゴ |
-| コンパートメント | JetUse専用リソースを作成するコンパートメント |
-| 初期管理者のメールアドレス | 作成するJetUse初期管理ユーザーのメールアドレス |
-| Identity Domainの準備方法 | `新しく作成`（推奨）または`既存を使用` |
+| コンパートメント | JetUse専用リソースの作成先 |
+| 初期管理者のメールアドレス | JetUse初期管理ユーザー |
+| Identity Domainの準備方法 | 新規作成または既存Domain利用 |
 
-`既存を使用`を選んだときだけ、5項目目の「使用するIdentity Domain」が表示されます。
-リソース名は `jetuse-<自動生成6文字>` として自動生成します。6文字はコンパートメントと
-選択リージョンから安定して算出するため、初回Planで確定し、再Applyでも変わりません。
-同じコンパートメント・同じリージョンには、標準版スタックを1つだけ作成してください。
+既存Domain利用時だけDomain選択が追加表示されます。それ以外のVCN、ADB、Dynamic Group、
+Policy、Generative AI Project、アプリリソースはすべて新規作成します。
 
-### 新しく作成（推奨）
+### コンパートメント管理者版
 
-JetUse専用のIdentity Domain、OIDCログインアプリ、初期管理ユーザーを作成します。
-Identity DomainとテナンシIAMを作成できる管理者権限が必要です。
+[![Deploy JetUse as a compartment administrator](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/sogawa-yk/jetuse/releases/download/orm-main/jetuse-orm-compartment.zip)
 
-### 既存のIdentity Domainを使用
+入力は次の4項目です。
 
-選択したACTIVEなDomain内に、JetUse専用OIDCログインアプリと初期管理ユーザーを
-作成します。既存Domain自体はTerraformの管理対象にせず、変更・削除しません。
-JWT検証に必要な「署名証明書へのパブリック・アクセス」がすでに有効かをPlanで確認し、
-無効ならDomain管理者へ依頼する日本語エラーで停止します。
+| 入力 | 内容 |
+|---|---|
+| デプロイするリージョン | 大阪（推奨）またはシカゴ |
+| JetUse専用コンパートメント | `manage all-resources`を付与された作成先 |
+| 初期管理者のメールアドレス | JetUse初期管理ユーザー |
+| 管理者が準備したDynamic Group名 | 下記Matching Ruleを持つACTIVEなDynamic Group |
 
-## 固定する構成
+既存・共有Identity Domainは選択しません。JetUse専用の無料Identity Domainを対象コンパートメントに
+新規作成し、その中にOAuthアプリと初期管理ユーザーをTerraformで作成します。
 
-- 大阪（`ap-osaka-1`）またはシカゴ（`us-chicago-1`）
-- 新規VCN、パブリック／プライベートサブネット、セキュリティ設定
-- Autonomous Database 26ai、2 ECPU、DBパスワードとWalletの自動生成
-- 新規Dynamic GroupとRuntime Policy
-- 新規Generative AI Project
-- Container Instance、Functions、API Gateway、Object Storage、SPA
-- Hosted Agent 3種類（アイドル時レプリカ0）
-- OIDC認証あり、OpenSearchなし、APIレート上限20 req/s
-- 動作確認済みOCI Provider `8.26.0`
+## Identity DomainとOAuthアプリの扱い
+
+どちらのテンプレートも次の2種類を自動作成します。
+
+- SPAログイン用: `public`クライアント、Authorization Code + PKCE
+- Hosted Agent用: `confidential`クライアント兼OAuth resource、Client Credentials、Audience/Scope、Client Secret
+
+専用コンパートメントの`manage all-resources`だけを持つユーザーでも、同じコンパートメント内の
+Identity Domain作成と、Domain内のApp/User/Grant/Setting管理を実機確認済みです。そのため
+コンパートメント版でClient IDやClient Secretを手入力する必要はありません。
+
+管理者版で別コンパートメントの既存・共有Domainを利用する場合は、そのDomainを管理できる権限が必要です。
+既存Domainの署名証明書パブリック・アクセスが無効なら、TerraformはDomainを変更せずPlanで停止します。
+
+## コンパートメント版を使う前の管理者作業
+
+### 1. Dynamic Groupを1本作成
+
+`<compartment_ocid>`をJetUse専用コンパートメントのOCIDへ置き換えます。名前は任意ですが、
+デプロイ担当者へ正確な名前を渡してください。
+
+```text
+Any {all {resource.type='computecontainerinstance', resource.compartment.id='<compartment_ocid>'},
+     all {resource.type='fnfunc', resource.compartment.id='<compartment_ocid>'},
+     all {resource.type='autonomousdatabase', resource.compartment.id='<compartment_ocid>'},
+     all {resource.type='generativeaisemanticstore', resource.compartment.id='<compartment_ocid>'},
+     all {resource.type='generativeaihostedapplication', resource.compartment.id='<compartment_ocid>'},
+     all {resource.type='generativeaihostedapplicationiam', resource.compartment.id='<compartment_ocid>'},
+     all {resource.type='generativeaihosteddeployment', resource.compartment.id='<compartment_ocid>'}}
+```
+
+Terraformは空白と改行を除いてこのRuleと完全一致するか確認します。対象コンパートメント、
+Resource Type、条件が不足・過剰な場合は、日本語エラーと期待するRuleを表示して停止します。
+
+### 2. デプロイ担当グループへ権限を付与
+
+`<domain>/<group>`と`<compartment_ocid>`を置き換えます。
+
+```text
+Allow group <domain>/<group> to inspect tenancies in tenancy
+Allow group <domain>/<group> to inspect compartments in tenancy
+Allow group <domain>/<group> to inspect dynamic-groups in tenancy
+Allow group <domain>/<group> to manage all-resources in compartment id <compartment_ocid>
+```
+
+- `inspect tenancies`: リージョン購読一覧とホームリージョンの取得
+- `inspect compartments`: Deploy画面でのコンパートメント選択
+- `inspect dynamic-groups`: 事前作成済みDynamic Groupの存在とMatching Ruleの検査
+- `manage all-resources in compartment`: Runtime Policy、Identity Domain/OAuth、JetUse本体の作成
+
+Dynamic Groupはテナンシに属するためコンパートメント管理者版では作成しません。一方、Runtime Policyは
+JetUse専用コンパートメント内にTerraformが作成するため、管理者による事前作成は不要です。
 
 ## Plan時の事前確認
 
-Terraformが確実に判定できる項目は、自己申告チェックボックスではなくPlanで停止します。
-
-| 結果 | 判定 |
+| 診断 | 次の操作 |
 |---|---|
-| 新規作成可能 | 選択した大阪／シカゴを購読済み |
-| 実行ユーザーの権限が不足 | リージョン購読を参照できない |
-| リージョンが未購読 | 選択リージョンがテナンシの購読一覧にない |
-| Identity Domainを利用できない | 既存DomainがACTIVEでない、または参照できない |
-| Identity Domainの事前設定が必要 | 既存Domainの署名証明書パブリック・アクセスが無効 |
+| リージョン購読一覧を取得できない | `inspect tenancies in tenancy`を管理者へ依頼 |
+| 大阪/シカゴが未購読 | OCIコンソールの「リージョン管理」で対象リージョンをサブスクライブ |
+| Dynamic Groupが見つからない | 名前、ACTIVE状態、`inspect dynamic-groups`を確認 |
+| Matching Ruleが一致しない | エラーに表示されたRuleへ管理者が更新 |
+| 既存Identity Domainが利用できない（管理者版のみ） | Domain状態、管理権限、署名証明書設定を確認 |
 
-「リージョンが未購読」と表示された場合は、OCIコンソールの「リージョン管理」から
-表示されたリージョン（`ap-osaka-1` または `us-chicago-1`）をサブスクライブします。
-購読が完了してからResource ManagerのPlanを再実行してください。
+OCIのPolicy文が実行者へどのように継承されているかや、サービス上限を変更せず完全判定することは
+できません。読み取りAPIで確実に判定できる項目だけをPlanで診断します。
 
-サービス上限と任意の手作業Policyの「意味的な充足」は、Terraform Planだけでは
-完全判定できません。標準版はIAMを必ず新規作成し、既存IAMの自動再利用を行わないことで
-曖昧さをなくします。ADB ECPUなどの上限は、Phase 3でOCI Limits APIを使った検証の
-対応可否を実機確認し、誤判定しないものだけ追加します。
+## 固定構成
 
-このため標準版では「既存IAMを使う」という入力自体を表示しません。手作業で準備した
-Dynamic Group／Policyを利用する組織向け版は別テンプレートにし、必要なresource type、
-対象コンパートメント、Policy文が揃っているかをPlan前に検査する計画です。
+- 大阪（`ap-osaka-1`）またはシカゴ（`us-chicago-1`）
+- 新規VCN、パブリック/プライベートサブネット、NSG
+- Autonomous Database 26ai、2 ECPU、Walletとパスワードの自動生成
+- 新規Runtime PolicyとGenerative AI Project
+- Container Instance、Functions、API Gateway、Object Storage、SPA
+- Hosted Agent 3種類、アイドル時レプリカ0
+- OIDC認証あり、OpenSearchなし、APIレート上限20 req/s
+- OCI Provider `8.26.0`、Terraform `>= 1.5.0`
 
-## テンプレートを分ける条件
-
-初心者向け画面にチェックボックスを増やさず、次は別テンプレートとして扱います。
-
-| 利用形態 | 扱い |
-|---|---|
-| 管理者が全リソースを新規作成 | ORM v2標準版 |
-| IAMを管理者が事前準備 | 組織向けテンプレート |
-| 既存VCN・ADB・Semantic Storeを再利用 | 上級者向けテンプレート |
-| 認証なし | 開発者向けテンプレート |
-| OpenSearchを追加 | 高コストの追加テンプレート |
-| 大阪／シカゴ以外 | 標準版では選択不可。リージョン検証後に別配布 |
-
-詳細な段階、依存関係、完成条件は
-[ORM v2実装計画](../plan-orm-v2.md)を参照してください。
+実装段階と完成条件は[ORM v2実装計画](../plan-orm-v2.md)を参照してください。

@@ -7,16 +7,29 @@ OCI Enterprise AI（OpenAI互換 agentic API）を基盤に、チャット / ユ
 
 ## デプロイ
 
-[![Deploy JetUse to Oracle Cloud](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/sogawa-yk/jetuse/releases/download/orm-main/jetuse-orm.zip)
+### テナンシIAM管理者向け
 
-このボタンは、IAMとアプリ本体を含む1つのTerraformスタックをOCI Resource Managerへ渡す（Working directoryの指定は不要）。
-VCN / Autonomous Database / API Gateway / Container Instance / Functions / Object Storage / Identity Domain を
-一括構築し、出力の `app_url` に `demo_username` / `demo_password` でログインできる状態になる。初回は10〜15分。
+[![Deploy JetUse as a tenancy IAM administrator](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/sogawa-yk/jetuse/releases/download/orm-main/jetuse-orm-admin.zip)
 
-- 入力は対象コンパートメントと `prefix` 程度。パスワードは自動生成、コンテナイメージは公開OCIRを使う。
-- 実行ユーザーのIAM権限に応じて `enable_dynamic_group` / `enable_runtime_policy` を切り替える。
-- 対応リージョン・サービス枠・事前チェックリストは [Resource Managerガイド](./docs/setup/orm.md)。
-  必要な権限は [Public版 IAM要件](./docs/setup/public-iam-requirements.md) と [IAMガイド](./docs/setup/iam.md)。
+Dynamic Group、Runtime Policy、専用Identity Domain、公開/機密OAuthアプリを含め、すべて新規作成する。
+
+### コンパートメント管理者向け
+
+[![Deploy JetUse as a compartment administrator](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/sogawa-yk/jetuse/releases/download/orm-main/jetuse-orm-compartment.zip)
+
+テナンシ管理者がDynamic Groupとデプロイ権限を準備済みの場合に使用する。Terraformは
+Dynamic Groupの存在・状態・Matching RuleをPlanで検査し、コンパートメント内のRuntime Policy、
+専用Identity Domain、ログイン用公開クライアント、Hosted Agent用機密クライアントを自動作成する。
+既存Identity Domain、Client ID、Client Secretの入力は不要。
+
+どちらも大阪またはシカゴを選択できる。未購読ならOCIコンソールの「リージョン管理」で
+サブスクライブしてからPlanを再実行する。VCN / Autonomous Database / API Gateway /
+Container Instance / Functions / Object Storageを新規作成し、初回は10〜15分。
+
+- 管理者版の入力: リージョン、対象コンパートメント、管理者メール、Identity Domainの新規/既存。
+- コンパートメント版の入力: リージョン、対象コンパートメント、管理者メール、管理者作成済みDynamic Group名。
+- 2テンプレートの選び方と事前IAM設定は [ORM v2ガイド](./docs/setup/orm-v2.md)。
+- 従来の詳細入力版は [Resource Managerガイド](./docs/setup/orm.md)。
 
 ## 機能
 
