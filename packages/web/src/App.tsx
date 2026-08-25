@@ -10,13 +10,16 @@ const Agents = lazy(() => import('./pages/agents'))
 const Builder = lazy(() => import('./pages/builder'))
 const Chat = lazy(() => import('./pages/chat'))
 const DbChat = lazy(() => import('./pages/dbchat'))
-const Design = lazy(() => import('./pages/design'))
 const Admin = lazy(() => import('./pages/admin'))
 const Home = lazy(() => import('./pages/home'))
 const Minutes = lazy(() => import('./pages/minutes'))
 const Ocr = lazy(() => import('./pages/ocr'))
 const Realtime = lazy(() => import('./pages/realtime'))
 const Video = lazy(() => import('./pages/video'))
+// 映像の場面検索(VID-06 / specs/20 §6)。一覧 / 検索 / 詳細の 3 画面。
+const Videos = lazy(() => import('./pages/videos'))
+const VideoSearch = lazy(() => import('./pages/videos/search'))
+const VideoDetail = lazy(() => import('./pages/videos/detail'))
 const VoiceChat = lazy(() => import('./pages/voicechat'))
 const Rag = lazy(() => import('./pages/rag'))
 const Settings = lazy(() => import('./pages/settings'))
@@ -56,6 +59,10 @@ export default function App() {
           <Route path="realtime" element={<Realtime />} />
           <Route path="voicechat" element={<VoiceChat />} />
           <Route path="video" element={<Video />} />
+          {/* `videos/search` は `videos/:id` より先に置く(後だと id として食われる) */}
+          <Route path="videos" element={<Videos />} />
+          <Route path="videos/search" element={<VideoSearch />} />
+          <Route path="videos/:id" element={<VideoDetail />} />
           <Route path="ocr" element={<Ocr />} />
           <Route path="uc/:id" element={<UsecaseRun />} />
           <Route path="builder" element={<Builder />} />
@@ -65,7 +72,6 @@ export default function App() {
           <Route path="builder/:id" element={<Builder />} />
           <Route path="admin" element={<Admin />} />
           <Route path="settings" element={<Settings onBranding={setBranding} />} />
-          <Route path="design" element={<Design />} />
         </Route>
       </Route>
     </Routes>

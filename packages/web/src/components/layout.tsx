@@ -25,11 +25,11 @@ const NAV: { to: string; key: string; icon: IconName }[] = [
   { to: '/minutes', key: 'nav.minutes', icon: 'minutes' },
   { to: '/realtime', key: 'nav.realtime', icon: 'realtime' },
   { to: '/voicechat', key: 'nav.voicechat', icon: 'voicechat' },
+  { to: '/videos', key: 'nav.videos', icon: 'video' },
   { to: '/video', key: 'nav.video', icon: 'video' },
   { to: '/ocr', key: 'nav.ocr', icon: 'ocr' },
   { to: '/admin', key: 'nav.admin', icon: 'admin' },
   { to: '/settings', key: 'nav.settings', icon: 'settings' },
-  { to: '/design', key: 'nav.design', icon: 'design' },
 ]
 
 const isDesktop = () => window.matchMedia('(min-width: 768px)').matches
