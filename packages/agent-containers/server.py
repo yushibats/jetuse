@@ -1,8 +1,13 @@
 """共通FastAPIサーバ(ADR-0009)。各SDKランナーが run_fn を渡してアプリを生成する。
 
 契約:
-  GET  /health -> {"status":"ok","sdk":...}
+  GET  /health -> {"status":"ok","sdk":...}   (liveness)
+  GET  /ready  -> {"status":"ok","sdk":...}   (readiness)
   POST /invoke (InvokeRequest) -> InvokeResponse
+
+Hosted Application は 0.0.0.0:8080 で listen し、readiness を /ready、liveness を /health で
+返すことを要求する。/ready が無いとデプロイが "timed out before the container was ready to
+serve requests" で NEEDS_ATTENTION になる。
 """
 
 import inspect
@@ -17,6 +22,10 @@ def create_app(sdk_name, run_fn):
 
     @app.get("/health")
     async def health():  # noqa: ANN201
+        return {"status": "ok", "sdk": sdk_name}
+
+    @app.get("/ready")
+    async def ready():  # noqa: ANN201
         return {"status": "ok", "sdk": sdk_name}
 
     @app.post("/invoke", response_model=InvokeResponse)

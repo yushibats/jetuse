@@ -1,0 +1,60 @@
+# 検証用: ホスト型エージェントの 3SDK イメージだけをビルドし、シカゴ(ord)の OCIR へ push する。
+# 手動実行専用(workflow_dispatch)。release.yml と違い latest タグや jetuse-* リポジトリには push しない。
+#
+# 前提:
+#  - push 先リポジトリ <repo_prefix>-agent-{openai,langgraph,adk} を ord に事前作成
+#    (無いと push がルートコンパートメントへの自動作成を試みる)
+#  - Secrets: OCIR_USERNAME("<namespace>/<user>")、OCIR_TOKEN(OCI Auth Token)
+#
+# 使う側(ORM スタック)は image_repo_prefix / image_tag をこの入力値に合わせ、
+# API と Functions ルーターは api_image_url / fn_router_image で既存イメージを指定する。
+name: demo-agent-images
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "push するイメージタグ(例 demo-ready1)。latest は不可"
+        required: true
+      repo_prefix:
+        description: "リポジトリ名の接頭辞(<prefix>-agent-<sdk>)"
+        required: true
+        default: jetusedemo
+
+permissions:
+  contents: read
+
+env:
+  OCIR_NAMESPACE: ${{ vars.OCIR_NAMESPACE || 'idqcucnenh88' }}
+  REGISTRY: ord.ocir.io
+
+jobs:
+  agents:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: [openai, langgraph, adk]
+    steps:
+      - name: Validate inputs
+        env:
+          TAG: ${{ inputs.tag }}
+          PREFIX: ${{ inputs.repo_prefix }}
+        run: |
+          case "$TAG" in latest|"") echo "tag must not be empty or latest" >&2; exit 1;; esac
+          echo "$TAG" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$' || { echo "invalid tag" >&2; exit 1; }
+          echo "$PREFIX" | grep -Eq '^[a-z0-9][a-z0-9-]*$' || { echo "invalid repo_prefix" >&2; exit 1; }
+          [ "$PREFIX" != "jetuse" ] || { echo "repo_prefix jetuse is the public release repository" >&2; exit 1; }
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.OCIR_USERNAME }}
+          password: ${{ secrets.OCIR_TOKEN }}
+      - name: Build & push agent image (${{ matrix.sdk }})
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: packages/agent-containers/Containerfile.${{ matrix.sdk }}
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.OCIR_NAMESPACE }}/${{ inputs.repo_prefix }}-agent-${{ matrix.sdk }}:${{ inputs.tag }}
