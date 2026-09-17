@@ -28,6 +28,42 @@ def test_responses_input_uses_input_text_for_all_roles():
     assert all(item["content"][0]["type"] == "input_text" for item in out)
 
 
+def test_responses_input_converts_image_parts():
+    # 映像分析・画像チャット(MM-01)は Chat Completions 形式のパーツで届く。
+    # そのまま input_text に入れると Responses が 400 untagged enum ResponseInput を返す
+    from jetuse_core.chat import _to_responses_input
+
+    url = "data:image/png;base64,AAAA"
+    out = _to_responses_input([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "説明して"},
+                {"type": "image_url", "image_url": {"url": url}},
+                {"type": "image_url", "image_url": {"url": url}},
+            ],
+        }
+    ])
+    assert out == [{
+        "type": "message",
+        "role": "user",
+        "content": [
+            {"type": "input_text", "text": "説明して"},
+            {"type": "input_image", "image_url": url},
+            {"type": "input_image", "image_url": url},
+        ],
+    }]
+
+
+def test_responses_input_rejects_unknown_parts():
+    import pytest
+
+    from jetuse_core.chat import _to_responses_input
+
+    with pytest.raises(ValueError):
+        _to_responses_input([{"role": "user", "content": [{"type": "audio"}]}])
+
+
 def test_models_registry_consistency():
     assert DEFAULT_MODEL in MODELS
     for m in MODELS.values():
