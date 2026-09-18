@@ -25,15 +25,25 @@ on:
         description: "ビルドする対象"
         required: true
         type: choice
-        default: agents
+        default: all
         options: [agents, api, all]
+      source_ref:
+        description: "ビルドするブランチ(このワークフローのブランチとは別に指定できる)"
+        required: true
+        default: verify/pr-both
+      registry:
+        description: "push 先のリージョン(ord=シカゴ / kix=大阪)"
+        required: true
+        type: choice
+        default: ord
+        options: [ord, kix]
 
 permissions:
   contents: read
 
 env:
   OCIR_NAMESPACE: ${{ vars.OCIR_NAMESPACE || 'idqcucnenh88' }}
-  REGISTRY: ord.ocir.io
+  REGISTRY: ${{ inputs.registry }}.ocir.io
 
 jobs:
   validate:
@@ -59,6 +69,8 @@ jobs:
         sdk: [openai, langgraph, adk]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.source_ref }}
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -78,6 +90,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.source_ref }}
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ${{ env.REGISTRY }}
