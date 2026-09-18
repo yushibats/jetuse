@@ -6,13 +6,14 @@
 
 import json
 import logging
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from openai import APIConnectionError, APIStatusError, OpenAI
 
-from .genai import make_inference_client
+from .genai import make_inference_client, project_is_propagating
 from .logging import log_with
 from .model_compat import agent_refusal, responses_input
 from .models import MODELS, ModelDef, mark_unavailable
@@ -25,6 +26,15 @@ from .settings import (
 )
 
 logger = logging.getLogger("jetuse.chat")
+
+# 自動作成した直後の project は DP へ行き渡るまで "Invalid OpenAI project." を返す(PORT-04)。
+# 作成直後に限り、この間隔・上限で待ってから同じ呼び出しをやり直す。
+PROJECT_NOT_READY_RETRY_SECONDS = 5.0
+PROJECT_NOT_READY_MAX_WAIT_SECONDS = 90.0
+
+
+def _is_project_not_ready(e: APIStatusError) -> bool:
+    return e.status_code == 400 and "Invalid OpenAI project" in str(e)
 
 ChatEvent = dict[str, Any]
 
@@ -941,7 +951,9 @@ def stream_chat(
             )
         return _stream_chat_completions(client, model, messages, temp, params)
 
-    for attempt in (1, 2):
+    attempt = 1  # 接続失敗・解析失敗のやり直しは1回まで
+    project_waited = 0.0  # project の反映待ちで待った秒数(attempt とは別に数える)
+    while True:
         yielded = False
         try:
             # Responses APIは OpenAi-Project ヘッダ必須(実機確定 — specs/00 未文書仕様2)
@@ -966,6 +978,8 @@ def stream_chat(
                 yield {"error": f"connection failed: {e}"}
                 return
             log_with(logger, logging.WARNING, "chat_retry", model=model_key)
+            attempt += 1
+            continue
         except json.JSONDecodeError:
             # OCIは一時エラーを非JSON(単引用符dict等)でSSEに流すことがあり、
             # SDKの解析がJSONDecodeErrorで落ちる(2026-06-11 RAGで実発生)。
@@ -973,6 +987,7 @@ def stream_chat(
             logger.exception("upstream stream parse failed (model=%s)", model_key)
             if not yielded and attempt == 1:
                 log_with(logger, logging.WARNING, "chat_retry_parse", model=model_key)
+                attempt += 1
                 continue
             yield {
                 "error": "上流応答の解析に失敗しました（一時的なエラーの可能性）。"
@@ -980,6 +995,19 @@ def stream_chat(
             }
             return
         except APIStatusError as e:
+            if (
+                not yielded
+                and _is_project_not_ready(e)
+                and project_is_propagating(project_ocid)
+                and project_waited < PROJECT_NOT_READY_MAX_WAIT_SECONDS
+            ):
+                log_with(
+                    logger, logging.WARNING, "chat_retry_project_not_ready",
+                    model=model_key, waited=project_waited,
+                )
+                time.sleep(PROJECT_NOT_READY_RETRY_SECONDS)
+                project_waited += PROJECT_NOT_READY_RETRY_SECONDS
+                continue
             # 404/403/401はモデル未提供/未認可(リージョン/テナンシ差)を示しうる(PORT-02)。
             # ただしRAG(stale vector store)/短期メモリ(stale conversation)/エージェント固有
             # project_ocid絡みの呼び出しはモデル以外が原因の404/403もあるため、プロセス全体を

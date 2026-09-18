@@ -85,6 +85,12 @@ def health():
     return {"status": "ok"}
 
 
+# Hosted Application は readiness を /ready で見る(PORT-04)。無いとデプロイが ready にならない。
+@app.get("/ready")
+def ready():
+    return {"status": "ok"}
+
+
 @app.post("/invoke")
 def invoke(req: InvokeRequest):
     out = GRAPH.invoke({"question": req.input, "notes": "", "answer": ""})

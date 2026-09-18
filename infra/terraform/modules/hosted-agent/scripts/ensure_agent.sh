@@ -19,6 +19,9 @@ set -eu
 
 . "$(dirname "$0")/lib.sh"
 
+# 3SDK の作成を1本ずつにする（同時に作ると1本しか ready にならない — lib.sh 参照）。
+acquire_lock
+
 find_owned_app
 APP="$OWNED_APP"
 
