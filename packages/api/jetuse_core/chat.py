@@ -55,15 +55,39 @@ class GenParams:
 def _to_responses_input(messages: list[dict]) -> list[dict]:
     """OCIのResponses実装は {role, content:str} を拒否する(実機確定)。
     受理されるのは type=message + 型付きcontentパーツの形式のみ。
-    アシスタント履歴も input_text にする(output_textはgpt-ossが400で拒否 — 2026-06-10実機)。"""
+    アシスタント履歴も input_text にする(output_textはgpt-ossが400で拒否 — 2026-06-10実機)。
+
+    画像つき発話(MM-01)は Chat Completions 形式の content パーツ
+    ({"type":"text"} / {"type":"image_url","image_url":{"url":...}})で届く。
+    そのまま input_text に入れると 400 `untagged enum ResponseInput` になるため、
+    input_text / input_image へ変換する(gemini-2.5-flash で実機確認 — 2026-09-17)。"""
     return [
         {
             "type": "message",
             "role": m["role"],
-            "content": [{"type": "input_text", "text": m["content"]}],
+            "content": _to_responses_content(m["content"]),
         }
         for m in messages
     ]
+
+
+def _to_responses_content(content: str | list[dict]) -> list[dict]:
+    if isinstance(content, str):
+        return [{"type": "input_text", "text": content}]
+    parts: list[dict] = []
+    for part in content:
+        kind = part.get("type")
+        if kind in ("text", "input_text"):
+            parts.append({"type": "input_text", "text": part.get("text", "")})
+        elif kind == "image_url":
+            image = part.get("image_url")
+            url = image.get("url") if isinstance(image, dict) else image
+            parts.append({"type": "input_image", "image_url": url})
+        elif kind == "input_image":
+            parts.append(part)
+        else:
+            raise ValueError(f"unsupported content part type: {kind}")
+    return parts
 
 
 def create_oci_conversation(metadata: dict[str, str], project_ocid: str | None = None) -> str:
