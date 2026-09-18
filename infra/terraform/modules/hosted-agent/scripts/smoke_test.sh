@@ -41,6 +41,7 @@ run() {
     HA_OWNER_TAG='jetuse:p03' HA_CONFIG_FINGERPRINT=FP \
     HA_CONTAINER_URI=reg.example/jetuse-agent-openai HA_TAG="${3:-v1}" \
     HA_APP_BODY="$APP_BODY" HA_DEP_BODY="${DEP_BODY}" \
+    HA_LOCK_DIR="$tmp/locks" HA_LOCK_TIMEOUT="${LOCK_TIMEOUT:-5400}" \
     sh "$here/$1" 2>&1)" && rc=0 || rc=$?
 }
 
@@ -105,6 +106,33 @@ check "設定が変わったらアプリごと作り直す" 0 "hosted agent read
 run ensure_agent.sh create_fresh '__APP_OCID__'
 check "image_tag が placeholder と同じでも作成できる" 0 "hosted agent ready" \
   '"hostedApplicationId":"__APP_OCID__"' '"hostedApplicationId":"ocid1[^"]*fresh"'
+
+# --- 作成の直列化（PORT-04）---
+# ロックのパスは lib.sh と同じ規則で求める（コンパートメントごとに1つ）。
+lock="$tmp/locks/jetuse-hosted-agent-$(printf '%s' comp | cksum | cut -d' ' -f1).lock"
+
+run ensure_agent.sh create_fresh
+check "作成後にロックを解放する" 0 "hosted agent ready" - '^POST'
+if [ -e "$lock" ]; then
+  echo "FAIL  作成後にロックを解放する: $lock が残っている"; fail=$((fail + 1))
+fi
+
+# 生きているプロセスがロックを持っていれば、待ちの上限を超えた時点で何もせず失敗する。
+mkdir -p "$lock"; echo $$ > "$lock/pid"
+LOCK_TIMEOUT=0
+run ensure_agent.sh create_fresh
+unset LOCK_TIMEOUT
+check "他の作成中は待ち、上限を超えたら何も作らない" 1 "ロックを" '^(POST|DELETE)' -
+if [ "$(cat "$lock/pid" 2>/dev/null)" != "$$" ]; then
+  echo "FAIL  他人のロックを消さない: $lock が消えた・書き換わった"; fail=$((fail + 1))
+fi
+rm -rf "$lock"
+
+# 持ち主が居ないロック（前回の apply が途中で死んだ）は引き継いで進む。
+sh -c 'exit 0' & dead=$!; wait "$dead"
+mkdir -p "$lock"; echo "$dead" > "$lock/pid"
+run ensure_agent.sh create_fresh
+check "持ち主の居ないロックは引き継ぐ" 0 "引き継ぎます" - '^POST'
 
 echo "=== ${pass} passed, ${fail} failed ==="
 [ "$fail" = 0 ]

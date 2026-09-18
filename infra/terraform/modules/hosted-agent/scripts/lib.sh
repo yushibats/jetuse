@@ -7,7 +7,37 @@
 
 BASE="https://generativeai.${HA_REGION}.oci.oraclecloud.com/20231130"
 TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
+LOCK_HELD=0
+trap 'rm -rf "$TMP"; if [ "$LOCK_HELD" = 1 ]; then rm -rf "$LOCK_DIR"; fi' EXIT
+
+# 同じコンパートメントへの作成を 1 本ずつにするロック(PORT-04)。
+# Terraform は for_each の 3SDK を並行に local-exec する。2026-09 の実機では、
+# 同時に作った Hosted Deployment のうち 1 本しか ready にならず、残りは約11分後に
+# "timed out before the container was ready" で NEEDS_ATTENTION になった
+# (us-chicago-1。1本ずつ作ると毎回 ACTIVE)。local-exec は同じ実行環境で走るので、
+# mkdir(原子的)のディレクトリロックで直列化できる。
+LOCK_DIR="${HA_LOCK_DIR:-${TMPDIR:-/tmp}}/jetuse-hosted-agent-$(printf '%s' "$HA_COMPARTMENT" | cksum | cut -d' ' -f1).lock"
+
+# acquire_lock — 取れるまで待つ。持ち主のプロセスが居なければ引き継ぐ。
+# 待ちの上限(HA_LOCK_TIMEOUT 秒)を超えたら何もせずに失敗する。
+acquire_lock() {
+  _waited=0
+  mkdir -p "$(dirname "$LOCK_DIR")"
+  while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+    _holder="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
+    if [ -n "$_holder" ] && ! kill -0 "$_holder" 2>/dev/null; then
+      echo "持ち主 (pid $_holder) が居ないロックを引き継ぎます: $LOCK_DIR" >&2
+      rm -rf "$LOCK_DIR"
+      continue
+    fi
+    [ "$_waited" -lt "${HA_LOCK_TIMEOUT:-5400}" ] ||
+      fail "Hosted Deployment の作成待ちのロックを ${_waited} 秒待っても取れませんでした: $LOCK_DIR"
+    sleep 5
+    _waited=$((_waited + 5))
+  done
+  echo $$ > "$LOCK_DIR/pid"
+  LOCK_HELD=1
+}
 
 # 応答は $TMP/resp、エラーは $TMP/err に落とす。成功時 0。
 # パイプ越しに呼ぶと CLI の終了コードが最後のコマンドに隠れるので、必ず単体で呼ぶ。

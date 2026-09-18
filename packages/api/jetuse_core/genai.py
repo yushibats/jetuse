@@ -46,11 +46,38 @@ _ACTIONABLE = (
 
 _project_lock = threading.Lock()
 _project_cache: str | None = None
+# キャッシュした project の作成時刻(epoch 秒)。PROJECT_OCID の明示指定では持たない。
+_project_created_at: float | None = None
+
+# 新しい project は CP で ACTIVE になっても DP(推論)側へすぐには行き渡らない。
+# us-chicago-1 実測(PORT-04, 2026-09): ACTIVE になってから約10〜20秒は Responses が
+# 400 "Invalid OpenAI project." を返し、通る応答と拒否する応答が混在する時間もある。
+# 作成からこの秒数の間だけ、呼び出し側はこのエラーを「反映待ち」として再試行してよい。
+PROJECT_PROPAGATION_WINDOW_SECONDS = 300
 
 
 def _reset_project_cache() -> None:
-    global _project_cache
+    global _project_cache, _project_created_at
     _project_cache = None
+    _project_created_at = None
+
+
+def _epoch(value) -> float | None:
+    return value.timestamp() if hasattr(value, "timestamp") else None
+
+
+def project_is_propagating(project_ocid: str | None = None, now: float | None = None) -> bool:
+    """自動解決した project が作成直後で、DP への反映待ちの可能性があるか。
+
+    project_ocid を渡した場合は、それが自動解決した project と同じときだけ判定する
+    (エージェント固有の project など、作成時刻を知らないものは対象外)。
+    """
+    if _project_created_at is None or _project_cache is None:
+        return False
+    if project_ocid and project_ocid != _project_cache:
+        return False
+    age = (time.time() if now is None else now) - _project_created_at
+    return age < PROJECT_PROPAGATION_WINDOW_SECONDS
 
 
 def _sdk_client(settings: Settings):
@@ -63,7 +90,7 @@ def _sdk_client(settings: Settings):
     return oci.generative_ai.GenerativeAiClient(**args)
 
 
-def _create_project(client, settings: Settings) -> str:
+def _create_project(client, settings: Settings):
     """project を自動作成し ACTIVE を有界待ち。非 ACTIVE のまま返すと OpenAi-Project が
     404 になるため、ACTIVE に達しなければ raise(キャッシュもしない — REV-001 major#2)。"""
     import oci
@@ -78,7 +105,7 @@ def _create_project(client, settings: Settings) -> str:
         state = getattr(created, "lifecycle_state", "")
         if state == "ACTIVE":
             logger.info("generative-ai project auto-created")
-            return created.id
+            return created
         if state in ("FAILED", "DELETING", "DELETED"):
             break
         time.sleep(2)
@@ -100,7 +127,7 @@ def resolve_project_ocid(
     allow_autocreate=False は診断/health目的の呼び出し向け(PORT-02): GETの読み取り専用
     エンドポイントがポーリングだけでリソースを作ってしまうのを避ける(レビュー指摘)。
     """
-    global _project_cache
+    global _project_cache, _project_created_at
     settings = settings or get_settings()
     if settings.project_ocid:
         return settings.project_ocid
@@ -117,13 +144,13 @@ def resolve_project_ocid(
             items = oci.pagination.list_call_get_all_results(
                 client.list_generative_ai_projects, settings.compartment_ocid
             ).data
-            resolved = next((p.id for p in items if p.lifecycle_state == "ACTIVE"), None)
-            if not resolved:
+            project = next((p for p in items if p.lifecycle_state == "ACTIVE"), None)
+            if not project:
                 if not settings.project_autocreate or not allow_autocreate:
                     raise ProjectResolutionError(
                         _ACTIONABLE + " (cause: no ACTIVE project and autocreate disabled)"
                     )
-                resolved = _create_project(client, settings)
+                project = _create_project(client, settings)
         except ProjectResolutionError:
             raise
         except Exception as e:
@@ -131,8 +158,10 @@ def resolve_project_ocid(
             code = getattr(e, "code", None) or type(e).__name__
             suffix = f" (cause: {code}{f' HTTP {status}' if status else ''})"
             raise ProjectResolutionError(_ACTIONABLE + suffix) from e
-        _project_cache = resolved
-        return resolved
+        _project_cache = project.id
+        # 別プロセス(uvicorn と bootstrap 等)が作った project も、作成時刻で反映待ちを判定できる
+        _project_created_at = _epoch(getattr(project, "time_created", None))
+        return project.id
 
 
 def make_inference_client(
